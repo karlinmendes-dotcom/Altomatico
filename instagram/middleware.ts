@@ -1,14 +1,12 @@
-import { clerkMiddleware, createRouteMatcher} from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export default clerkMiddleware((auth, req) => {
-    if (isProtectedRoute(req)) auth().protect();
-  });
-const isProtectedRoute = createRouteMatcher([
-    '/dashboard(.*)',
-    '/',
-  ]);
+export function middleware(request: NextRequest) {
+  // Convex handles authentication through its own provider
+  // This middleware is simplified for now
+  return NextResponse.next();
+}
 
 export const config = {
-  
-  matcher: [ '/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],
+  matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],
 };

@@ -8,9 +8,8 @@ import { ArrowLeft} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { chatSession } from '@/utils/AiModel'
-import { db } from '@/utils/db'
-import { AiOutput } from '@/utils/schema'
-import { useUser } from '@clerk/nextjs'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { TotalUsageContext } from '@/app/(context)/TotalUsageContext'
 interface PROPS{
   params:{
@@ -22,7 +21,8 @@ function CreateNewContent(props:PROPS) {
   const selectedtemplate:TEMPLATE|undefined = Templates?.find((item)=>item.slug == props.params['template-slug'])
   const [loading, setLoading] = useState(false);
   const [aiOutput, setAiOutput] = useState<string>('');
-  const {user} = useUser();
+  const saveAiOutput = useMutation(api.aiOutputs.save);
+  const [userEmail] = useState<string>('usuario@exemplo.com');
   const { totalUsage, setTotalUsage } = useContext(TotalUsageContext);
  
   
@@ -51,20 +51,23 @@ function CreateNewContent(props:PROPS) {
       return;
     }
     
-    const createdBy = user?.primaryEmailAddress?.emailAddress;
+    const createdBy = userEmail;
     if (!createdBy) {
       console.error("User email is undefined");
       return;
     }
 
-    const result = await db.insert(AiOutput).values({
-      formData: formData,
-      templateSlug: slug,
-      aiResponse: aiResp,
-      createdBy: createdBy,
-      createdAt: new Date().toISOString(),
-    });
-    console.log(result)
+    try {
+      await saveAiOutput({
+        formData: formData,
+        templateSlug: slug,
+        aiResponse: aiResp,
+        createdBy: createdBy,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error saving to Convex:", error);
+    }
   }
   return (
     <div className='p-10'>

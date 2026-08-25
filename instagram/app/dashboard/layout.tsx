@@ -1,11 +1,10 @@
 'use client'
 import React, { useState } from 'react'
 import SideNav from './_components/SideNav';
-// import Header from './_components/Header';
 import { TotalUsageContext } from '../(context)/TotalUsageContext';
 
 
-function layout({
+function DashboardLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -28,5 +27,5 @@ function layout({
   )
 }
 
-export default layout
+export default DashboardLayout
 

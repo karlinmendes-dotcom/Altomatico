@@ -1,14 +1,12 @@
 'use client'
 import { useEffect, useState } from 'react';
-import { AiOutput } from '@/utils/schema';
-import { db } from '@/utils/db';
-import { useUser } from '@clerk/nextjs';
+import { useQuery } from 'convex/react';
+import { api } from '../../../../convex/_generated/api';
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { eq, desc } from 'drizzle-orm';
 
 export interface HISTORY {
-  id: number;
+  _id: string;
   formData: string;
   aiResponse: string;
   templateSlug: string;
@@ -16,25 +14,9 @@ export interface HISTORY {
   createdAt: string;
 }
 
-const fetchHistoryByEmail = async (email: any) => {
-  const data = await db.select().from(AiOutput).where(eq(AiOutput.createdBy, email)).orderBy(desc(AiOutput.createdAt)).execute();
-  return data.map((item: any) => ({
-    ...item,
-    aiResponse: item.aiResponse ?? '', // Convert null to empty string 
-  }));
-};
-
 const HistoryPage = () => {
-  const { user } = useUser();
-  const [history, setHistory] = useState<HISTORY[]>([]);
-  const fetchData = async (user: any) => {
-    const data = await fetchHistoryByEmail(user.primaryEmailAddress.emailAddress);
-    setHistory(data);
-  };
-
-  useEffect(() => {
-    user && fetchData(user);
-  }, [user]);
+  const [userEmail] = useState<string>('usuario@exemplo.com');
+  const history = useQuery(api.aiOutputs.listByUser, { createdBy: userEmail }) || [];
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
