@@ -1,0 +1,19 @@
+{
+  "name": "altomatico",
+  "version": "1.0.0",
+  "description": "Altomatico - Automação de conteúdo para YouTube e Instagram com IA",
+  "private": true,
+  "scripts": {
+    "dev:convex": "bunx convex dev",
+    "dev:instagram": "cd instagram && bun run dev",
+    "build:instagram": "cd instagram && bun run build",
+    "deploy:convex": "bunx convex deploy",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "convex": "^1.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,43 @@
+# Dependências
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Ambiente
+.env
+.env.local
+.env.production
+
+# Build
+dist/
+build/
+.next/
+
+# Convex
+convex/_generated/
+
+# YouTube - MoneyPrinterTurbo
+youtube/config.toml
+youtube/storage/
+youtube/.venv/
+youtube/*.log
+
+# Instagram
+instagram/.next/
+instagram/out/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
