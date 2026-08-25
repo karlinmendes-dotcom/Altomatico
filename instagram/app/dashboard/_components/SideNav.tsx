@@ -5,7 +5,7 @@ import { Home, LucideFileClock, Settings, WalletCards } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import UsageTrack from './UsageTrack'
-import { UserButton } from '@clerk/nextjs'
+// Clerk removido - usando Convex
 
 function  SideNav() {
   const MenuList = [
@@ -43,7 +43,7 @@ function  SideNav() {
       <hr className='my-6 border'/>
       <div className='mt-3'>
       <div className='flex items-center gap-2 mb-1 p-3'>
-      <UserButton/>
+      <div className='w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center'>U</div>
       <h2 className='text-lg'>Profile</h2>
       </div>
         {MenuList.map((menu, index)=>(

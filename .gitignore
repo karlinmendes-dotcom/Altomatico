@@ -17,6 +17,7 @@ build/
 
 # Convex
 convex/_generated/
+instagram/convex/_generated/
 
 # YouTube - MoneyPrinterTurbo
 youtube/config.toml
