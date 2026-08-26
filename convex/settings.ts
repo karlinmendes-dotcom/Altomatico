@@ -25,6 +25,8 @@ export const createOrUpdate = mutation({
     brandTone: v.optional(v.string()),
     brandVoice: v.optional(v.string()),
     brandStyle: v.optional(v.string()),
+    prohibitedKeywords: v.optional(v.array(v.string())),
+    prohibitedTopics: v.optional(v.array(v.string())),
     automationMode: v.optional(v.union(
       v.literal("manual"),
       v.literal("semi"),

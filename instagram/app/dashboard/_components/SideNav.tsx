@@ -1,6 +1,6 @@
 "use client"
 import React from 'react'
-import { Home, Instagram, Youtube, Settings, BarChart3 } from 'lucide-react'
+import { Home, Instagram, Youtube, Settings, BarChart3, Calendar } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 
@@ -25,10 +25,16 @@ function SideNav() {
       color: 'text-red-500',
     },
     {
+      name: 'Calendário',
+      icon: Calendar,
+      path: '/dashboard/calendar',
+      color: 'text-blue-500',
+    },
+    {
       name: 'Histórico',
       icon: BarChart3,
       path: '/dashboard/history',
-      color: 'text-blue-500',
+      color: 'text-green-500',
     },
     {
       name: 'Configurações',
@@ -37,7 +43,7 @@ function SideNav() {
       color: 'text-gray-500',
     },
   ]
-  const path = usePathname();
+  const path = usePathname()
 
   return (
     <div className='h-screen relative p-5 bg-gray-900 text-white flex flex-col'>
