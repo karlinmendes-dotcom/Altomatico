@@ -36,6 +36,9 @@ instagram/out/
 .DS_Store
 Thumbs.db
 
+# Cópia isolada (backup)
+isolate/
+
 # IDE
 .vscode/
 .idea/

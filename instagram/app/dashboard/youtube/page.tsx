@@ -1,6 +1,6 @@
 'use client'
 import React, { useState } from 'react'
-import { Youtube, Loader2, Sparkles, Play, Mic, Captions, Video, AlertCircle, CheckCircle } from 'lucide-react'
+import { Youtube, Loader2, Sparkles, Play, Mic, Captions, Video, AlertCircle, CheckCircle, TrendingUp, Search, Target, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -21,30 +21,54 @@ const voices = [
   { id: 'en-male', label: 'Masculina EN', lang: 'Inglês' },
 ]
 
+type PipelineStep = 'config' | 'research' | 'strategy' | 'script' | 'preview'
+
 export default function YouTubePage() {
   const [selectedStyle, setSelectedStyle] = useState('shorts')
   const [topic, setTopic] = useState('')
   const [description, setDescription] = useState('')
   const [voice, setVoice] = useState('pt-female')
+  const [tone, setTone] = useState('educativo')
   const [loading, setLoading] = useState(false)
-  const [step, setStep] = useState(0)
+  const [currentStep, setCurrentStep] = useState<PipelineStep>('config')
   const [script, setScript] = useState('')
   const [title, setTitle] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [aiSource, setAiSource] = useState<'gemini' | 'local' | null>(null)
+  const [researchData, setResearchData] = useState<string>('')
+  const [strategyData, setStrategyData] = useState<string>('')
+  const [trendScore, setTrendScore] = useState<number | null>(null)
+  const [pipelineSteps, setPipelineSteps] = useState<{ step: number; label: string; done: boolean }[]>([])
 
   const createContent = useMutation(api.contents.create)
   const updateScriptMutation = useMutation(api.contents.updateScript)
   const generateYouTube = useAction(api.generateContent.generateYouTubeScript)
+  const runResearch = useAction(api.aiEngine.researchTopic)
+  const runStrategy = useAction(api.aiEngine.createStrategy)
+  const runScript = useAction(api.aiEngine.generateScript)
+  const runTrendScore = useAction(api.aiEngine.calculateTrendScore)
 
   const handleGenerate = async () => {
     if (!topic) return
     setLoading(true)
     setError(null)
-    setStep(1)
     setSaved(false)
     setAiSource(null)
+    setResearchData('')
+    setStrategyData('')
+    setTrendScore(null)
+
+    const steps = [
+      { step: 1, label: 'Pesquisando tema e tendências...', done: false },
+      { step: 2, label: 'Analisando oportunidades...', done: false },
+      { step: 3, label: 'Criando estratégia de conteúdo...', done: false },
+      { step: 4, label: 'Gerando roteiro otimizado...', done: false },
+      { step: 5, label: 'Calculando score de oportunidade...', done: false },
+      { step: 6, label: 'Salvando no banco de dados...', done: false },
+    ]
+    setPipelineSteps(steps)
+    setCurrentStep('research')
 
     try {
       // 1. Criar conteúdo no Convex
@@ -53,44 +77,94 @@ export default function YouTubePage() {
         topic,
         platform: 'youtube',
         contentType: selectedStyle,
-        tone: 'educativo',
+        tone,
         voice,
         style: selectedStyle,
         description,
         createdBy: 'user',
       })
 
-      // 2. Pipeline de geração
-      await delay(600)
-      setStep(2)
-      await delay(400)
-      setStep(3)
-      await delay(400)
-      setStep(4)
+      // 2. Research Engine
+      setPipelineSteps(s => s.map((st, i) => i === 0 ? { ...st, done: true } : st))
+      let researchResult: Record<string, unknown> | null = null
+      try {
+        researchResult = await runResearch({
+          topic,
+          platform: 'youtube',
+          niche: description || undefined,
+        })
+        setResearchData(JSON.stringify(researchResult, null, 2))
+        setPipelineSteps(s => s.map((st, i) => i === 1 ? { ...st, done: true } : st))
+      } catch {
+        setPipelineSteps(s => s.map((st, i) => i === 1 ? { ...st, done: true } : st))
+      }
 
-      // 3. Gerar roteiro com Gemini real ou local
+      // 3. Strategy Engine
+      setCurrentStep('strategy')
+      setPipelineSteps(s => s.map((st, i) => i === 2 ? { ...st, done: true } : st))
+      let strategyResult: Record<string, unknown> | null = null
+      try {
+        strategyResult = await runStrategy({
+          topic,
+          platform: 'youtube',
+          researchData: researchResult ? JSON.stringify(researchResult) : undefined,
+          brandTone: tone,
+          objective: 'educar',
+        })
+        setStrategyData(JSON.stringify(strategyResult, null, 2))
+      } catch {
+        // Continuar sem estratégia
+      }
+
+      // 4. Script Engine
+      setCurrentStep('script')
+      setPipelineSteps(s => s.map((st, i) => i === 3 ? { ...st, done: true } : st))
       let generatedTitle = topic
       let generatedScript = ''
 
       try {
-        const result = await generateYouTube({
+        const result = await runScript({
           topic,
-          style: selectedStyle,
+          platform: 'youtube',
+          strategy: strategyResult ? JSON.stringify(strategyResult) : undefined,
+          style: tone,
           voice,
+          duration: selectedStyle === 'shorts' ? '30s' : '3min',
         })
         generatedTitle = result.title
         generatedScript = result.script
         setAiSource('gemini')
       } catch {
-        generatedScript = generateScript(topic, description, selectedStyle)
-        setAiSource('local')
-        setError('Gemini indisponível. Roteiro gerado localmente.')
+        try {
+          const result = await generateYouTube({
+            topic,
+            style: selectedStyle,
+            voice,
+          })
+          generatedTitle = result.title
+          generatedScript = result.script
+          setAiSource('gemini')
+        } catch {
+          generatedScript = generateLocalScript(topic, description, selectedStyle)
+          setAiSource('local')
+          setError('Gemini indisponível. Roteiro gerado localmente.')
+        }
       }
 
       setTitle(generatedTitle)
       setScript(generatedScript)
 
-      // 4. Salvar no Convex
+      // 5. Trend Score
+      setPipelineSteps(s => s.map((st, i) => i === 4 ? { ...st, done: true } : st))
+      try {
+        const score = await runTrendScore({ topic, platform: 'youtube' })
+        setTrendScore(score.totalScore)
+      } catch {
+        // Sem score não é crítico
+      }
+
+      // 6. Salvar no Convex
+      setPipelineSteps(s => s.map((st, i) => i === 5 ? { ...st, done: true } : st))
       await updateScriptMutation({
         contentId,
         script: generatedScript,
@@ -100,11 +174,13 @@ export default function YouTubePage() {
       })
 
       setSaved(true)
+      setCurrentStep('preview')
     } catch (err) {
-      const generatedScript = generateScript(topic, description, selectedStyle)
+      const generatedScript = generateLocalScript(topic, description, selectedStyle)
       setScript(generatedScript)
       setTitle(topic)
       setAiSource('local')
+      setCurrentStep('preview')
     } finally {
       setLoading(false)
     }
@@ -118,10 +194,33 @@ export default function YouTubePage() {
           <Youtube className='w-6 h-6 text-white' />
         </div>
         <div>
-          <h1 className='text-2xl font-bold text-gray-900'>YouTube</h1>
-          <p className='text-gray-500 text-sm'>Gere vídeos automáticos com IA</p>
+          <h1 className='text-2xl font-bold text-gray-900'>YouTube Studio</h1>
+          <p className='text-gray-500 text-sm'>Pesquise, strategize e gere vídeos completos com IA</p>
         </div>
       </div>
+
+      {/* Pipeline Visual */}
+      {pipelineSteps.length > 0 && (
+        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6'>
+          <div className='flex items-center gap-2 overflow-x-auto pb-2'>
+            {pipelineSteps.map((step, i) => (
+              <React.Fragment key={i}>
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
+                  step.done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                    step.done ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'
+                  }`}>
+                    {step.done ? '✓' : step.step}
+                  </div>
+                  {step.label}
+                </div>
+                {i < pipelineSteps.length - 1 && <ChevronRight className='w-4 h-4 text-gray-300 shrink-0' />}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className='grid lg:grid-cols-3 gap-6'>
         {/* Form */}
@@ -172,6 +271,25 @@ export default function YouTubePage() {
               </div>
 
               <div>
+                <label className='block text-sm font-medium text-gray-700 mb-1'>Tom de Voz</label>
+                <div className='flex flex-wrap gap-2'>
+                  {['educativo', 'entretenimento', 'storytelling', 'tutorial', 'inspirador'].map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setTone(t)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition capitalize
+                        ${tone === t
+                          ? 'bg-red-500 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label className='block text-sm font-medium text-gray-700 mb-1'>Voz / Narração</label>
                 <div className='grid grid-cols-2 gap-2'>
                   {voices.map(v => (
@@ -207,32 +325,36 @@ export default function YouTubePage() {
                 className='w-full bg-gradient-to-r from-red-500 to-red-700 hover:from-red-600 hover:to-red-800 text-white py-6 text-lg'
               >
                 {loading ? (
-                  <><Loader2 className='w-5 h-5 animate-spin mr-2' /> Gerando...</>
+                  <><Loader2 className='w-5 h-5 animate-spin mr-2' /> Processando pipeline completo...</>
                 ) : (
-                  <><Sparkles className='w-5 h-5 mr-2' /> Gerar Roteiro</>
+                  <><Sparkles className='w-5 h-5 mr-2' /> Iniciar Pipeline de Conteúdo</>
                 )}
               </Button>
             </div>
           </div>
 
-          {/* Progress */}
-          {(loading || step > 0) && (
+          {/* Research Results */}
+          {researchData && (
             <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-              <h3 className='font-bold text-gray-900 mb-4'>Progresso</h3>
-              <div className='space-y-3'>
-                {[
-                  { s: 1, label: 'Analisando tema', icon: <Sparkles className='w-4 h-4' /> },
-                  { s: 2, label: aiSource === 'gemini' ? 'Gemini gerando roteiro...' : 'Gerando estrutura...', icon: <Video className='w-4 h-4' /> },
-                  { s: 3, label: 'Criando capítulos', icon: <Mic className='w-4 h-4' /> },
-                  { s: 4, label: 'Otimizando SEO', icon: <Captions className='w-4 h-4' /> },
-                ].map(item => (
-                  <div key={item.s} className={`flex items-center gap-3 p-3 rounded-lg ${step >= item.s ? 'bg-green-50' : 'bg-gray-50'}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= item.s ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
-                      {step > item.s ? '✓' : item.icon}
-                    </div>
-                    <span className={`text-sm font-medium ${step >= item.s ? 'text-green-700' : 'text-gray-400'}`}>{item.label}</span>
-                  </div>
-                ))}
+              <div className='flex items-center gap-2 mb-4'>
+                <Search className='w-5 h-5 text-blue-500' />
+                <h3 className='font-bold text-gray-900'>Resultado da Pesquisa</h3>
+              </div>
+              <div className='bg-blue-50 rounded-xl p-4 max-h-60 overflow-y-auto'>
+                <pre className='text-xs text-gray-700 whitespace-pre-wrap font-mono'>{researchData}</pre>
+              </div>
+            </div>
+          )}
+
+          {/* Strategy Results */}
+          {strategyData && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+              <div className='flex items-center gap-2 mb-4'>
+                <Target className='w-5 h-5 text-purple-500' />
+                <h3 className='font-bold text-gray-900'>Estratégia de Conteúdo</h3>
+              </div>
+              <div className='bg-purple-50 rounded-xl p-4 max-h-60 overflow-y-auto'>
+                <pre className='text-xs text-gray-700 whitespace-pre-wrap font-mono'>{strategyData}</pre>
               </div>
             </div>
           )}
@@ -242,13 +364,33 @@ export default function YouTubePage() {
         <div className='space-y-6'>
           <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sticky top-6'>
             <h3 className='font-bold text-gray-900 mb-4'>Pré-visualização</h3>
+
+            {/* Trend Score */}
+            {trendScore !== null && (
+              <div className={`mb-4 p-4 rounded-xl text-center ${
+                trendScore >= 70 ? 'bg-green-50 border border-green-200' :
+                trendScore >= 40 ? 'bg-yellow-50 border border-yellow-200' :
+                'bg-red-50 border border-red-200'
+              }`}>
+                <p className='text-xs text-gray-500 mb-1'>Score de Oportunidade</p>
+                <p className={`text-3xl font-bold ${
+                  trendScore >= 70 ? 'text-green-600' :
+                  trendScore >= 40 ? 'text-yellow-600' : 'text-red-600'
+                }`}>{trendScore}</p>
+                <p className='text-xs text-gray-500 mt-1'>
+                  {trendScore >= 70 ? 'Excelente oportunidade!' :
+                   trendScore >= 40 ? 'Oportunidade moderada' : 'Considere outro ângulo'}
+                </p>
+              </div>
+            )}
+
             {script ? (
               <div className='space-y-4'>
                 {/* Fonte da IA */}
                 {aiSource && (
                   <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium w-fit ${
-                    aiSource === 'gemini' 
-                      ? 'bg-green-100 text-green-700' 
+                    aiSource === 'gemini'
+                      ? 'bg-green-100 text-green-700'
                       : 'bg-yellow-100 text-yellow-700'
                   }`}>
                     {aiSource === 'gemini' ? '✨ Gerado por Gemini IA' : '📝 Geração local'}
@@ -270,14 +412,14 @@ export default function YouTubePage() {
                 </div>
 
                 <div className='bg-gray-50 rounded-xl p-4'>
-                  <p className='text-xs font-medium text-gray-500 mb-2'>ROTEIRO</p>
-                  <p className='text-sm text-gray-700 whitespace-pre-line max-h-40 overflow-y-auto'>{script}</p>
+                  <p className='text-xs font-medium text-gray-500 mb-2'>ROTEIRO COMPLETO</p>
+                  <p className='text-sm text-gray-700 whitespace-pre-line max-h-60 overflow-y-auto'>{script}</p>
                 </div>
 
                 {saved && (
                   <div className='bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2'>
                     <CheckCircle className='w-4 h-4 text-green-500' />
-                    <span className='text-sm text-green-700'>Salvo no Convex!</span>
+                    <span className='text-sm text-green-700'>Salvo no banco de dados!</span>
                   </div>
                 )}
 
@@ -288,7 +430,8 @@ export default function YouTubePage() {
             ) : (
               <div className='text-center py-12 text-gray-400'>
                 <Play className='w-12 h-12 mx-auto mb-3 opacity-50' />
-                <p className='text-sm'>Configure e clique em Gerar Roteiro</p>
+                <p className='text-sm'>Configure e inicie o pipeline de conteúdo</p>
+                <p className='text-xs mt-1 text-gray-300'>Pesquisa → Estratégia → Roteiro</p>
               </div>
             )}
           </div>
@@ -298,67 +441,69 @@ export default function YouTubePage() {
   )
 }
 
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+function generateLocalScript(topic: string, description: string, style: string): string {
+  var isShort = style === 'shorts'
+  var duration = isShort ? '45 segundos' : '5 minutos'
+  var desc = description || ('Vou te mostrar algo incrivel sobre ' + topic + '.')
+  var cleanTopic = topic.toLowerCase().replace(/\s/g, '')
 
-function generateScript(topic: string, description: string, style: string): string {
-  const isShort = style === 'shorts'
-  const duration = isShort ? '45 segundos' : '5 minutos'
-  
   if (isShort) {
-    return `# SHORT: ${topic}
-
-**Duração:** ${duration}
-**Formato:** Vertical 9:16
-
----
-
-**HOOK (0-3s)**
-🔴 PAROU DE SCROLLAR? Isso vai mudar como você vê ${topic}!
-
-**CONTEÚDO (3-35s)**
-${description || `Vou te mostrar algo incrível sobre ${topic}.`}
-
-Aquilo que eu vou te mostrar agora poupa horas do seu dia.
-
-**CTA (35-45s)**
-Salva esse vídeo! Compartilha com aquele amigo que precisa ver isso! Segue pra mais!
-
----
-
-**Título:** ${topic}
-**Hashtags:** #shorts #${topic.toLowerCase().replace(/\s/g, '')} #dicas`
+    return [
+      '# SHORT: ' + topic,
+      '',
+      '**Duracao:** ' + duration,
+      '**Formato:** Vertical 9:16',
+      '',
+      '---',
+      '',
+      '**HOOK (0-3s)**',
+      'RED PAROU DE SCROLLAR? Isso vai mudar como voce ve ' + topic + '!',
+      '',
+      '**CONTEUDO (3-35s)**',
+      desc,
+      '',
+      'Aquilo que eu vou te mostrar agora poupa horas do seu dia.',
+      '',
+      '**CTA (35-45s)**',
+      'Salva esse video! Compartilha com aquele amigo que precisa ver isso! Segue pra mais!',
+      '',
+      '---',
+      '',
+      '**Titulo:** ' + topic,
+      '**Hashtags:** #shorts #' + cleanTopic + ' #dicas'
+    ].join('\n')
   }
 
-  return `# ROTEIRO: ${topic}
-
-**Duração:** ${duration}
-**Formato:** 16:9 Horizontal
-
----
-
-**HOOK (0-5s)**
-Olá! Hoje vou te mostrar ${topic}. Fica até o final porque tem uma dica que vai te surpreender!
-
-**ABERTURA (5-15s)**
-Se você sempre quis entender melhor sobre ${topic}, esse vídeo é pra você. Vou explicar tudo de forma clara e objetiva.
-
-**DESENVOLVIMENTO (15-3:30min)**
-${description || `Vou cobrir os pontos principais sobre ${topic}.`}
-
-1. **Primeiro ponto** — Contexto e importância
-2. **Segundo ponto** — Como aplicar na prática
-3. **Terceiro ponto** — Dicas avançadas que poucos conhecem
-
-**CONCLUSÃO (3:30-5:00min)**
-Resumindo: ${topic} é essencial para quem quer resultados. Aplica essas dicas e me conta nos comentários como foi!
-
-Se esse conteúdo te ajudou, deixa o like, se inscreve no canal e ativa o sininho pra não perder os próximos vídeos!
-
----
-
-**Título sugerido:** ${topic}
-**Descrição:** ${topic} — Neste vídeo explico tudo que você precisa saber.
-**Tags:** #${topic.toLowerCase().replace(/\s/g, '')} #conteudo #dicas #educacao`
+  return [
+    '# ROTEIRO: ' + topic,
+    '',
+    '**Duracao:** ' + duration,
+    '**Formato:** 16:9 Horizontal',
+    '',
+    '---',
+    '',
+    '**HOOK (0-5s)**',
+    'Ola! Hoje vou te mostrar ' + topic + '. Fica ate o final porque tem uma dica que vai te surpreender!',
+    '',
+    '**ABERTURA (5-15s)**',
+    'Se voce sempre quis entender melhor sobre ' + topic + ', esse video e pra voce. Vou explicar tudo de forma clara e objetiva.',
+    '',
+    '**DESENVOLVIMENTO (15-3:30min)**',
+    desc,
+    '',
+    '1. **Primeiro ponto** - Contexto e importancia',
+    '2. **Segundo ponto** - Como aplicar na pratica',
+    '3. **Terceiro ponto** - Dicas avancadas que poucos conhecem',
+    '',
+    '**CONCLUSAO (3:30-5:00min)**',
+    'Resumindo: ' + topic + ' e essencial para quem quer resultados. Aplica essas dicas e me conta nos comentarios como foi!',
+    '',
+    'Se esse conteudo te ajudou, deixa o like, se inscreve no canal e ativa o sininho pra nao perder os proximos videos!',
+    '',
+    '---',
+    '',
+    '**Titulo sugerido:** ' + topic,
+    '**Descricao:** ' + topic + ' - Neste video explico tudo que voce precisa saber.',
+    '**Tags:** #' + cleanTopic + ' #conteudo #dicas #educacao'
+  ].join('\n')
 }
