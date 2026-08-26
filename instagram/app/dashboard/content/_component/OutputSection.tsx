@@ -1,38 +1,40 @@
-import React, { useEffect, useRef } from 'react'
-import '@toast-ui/editor/dist/toastui-editor.css';
-import { Editor } from '@toast-ui/react-editor';
+'use client'
+import React, { useRef } from 'react'
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
 
 interface PROPS{
   aiOutput:string;
 }
 
 function OutputSection({aiOutput}:PROPS) {
-  const editorRef:any = useRef();
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(()=>{
-    const editorInstance = editorRef.current.getInstance();
-    editorInstance.setMarkdown(aiOutput);
-  },[aiOutput])
-  
+  const handleCopy = () => {
+    if (aiOutput) {
+      navigator.clipboard.writeText(aiOutput);
+    }
+  };
+
   return (
-    <div className='bg-white shadow-lg border'>
-      <div className='flex justify-between items-center p-5'>
-        <h2 className='font-medium text-lg '>Generated Content</h2>
-        <Button className='flex gap-2'
-        onClick={()=>navigator.clipboard.writeText(aiOutput)}><Copy className='w-4 h-4'/> Copy</Button>
-
+    <div className='bg-white shadow-lg border rounded-lg'>
+      <div className='flex justify-between items-center p-5 border-b'>
+        <h2 className='font-medium text-lg'>Conteúdo Gerado</h2>
+        <Button className='flex gap-2' onClick={handleCopy}>
+          <Copy className='w-4 h-4'/> Copiar
+        </Button>
       </div>
-      <Editor
-        ref = {editorRef}
-        initialValue="Generated Content will Appear here"
-        height="600px"
-        initialEditType="markdown"
-        useCommandShortcut={true}
-        onChange = {()=>console.log(editorRef.current.getInstance().getMarkdown())}
-      />
+      <div className='p-5'>
+        {aiOutput ? (
+          <div className='prose prose-sm max-w-none whitespace-pre-wrap text-sm leading-relaxed'>
+            {aiOutput}
+          </div>
+        ) : (
+          <div className='text-gray-400 text-center py-20'>
+            O conteúdo gerado aparecerá aqui...
+          </div>
+        )}
+      </div>
     </div>
   )
 }

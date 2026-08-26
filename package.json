@@ -4,6 +4,9 @@
   "description": "Altomatico - Automação de conteúdo para YouTube e Instagram com IA",
   "private": true,
   "scripts": {
+    "dev": "cd instagram && npx next dev -H 0.0.0.0",
+    "build": "cd instagram && npx next build",
+    "start": "cd instagram && npx next start",
     "dev:convex": "bunx convex dev",
     "dev:instagram": "cd instagram && bun run dev",
     "build:instagram": "cd instagram && bun run build",
@@ -11,7 +14,10 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
-    "convex": "^1.21.0"
+    "convex": "^1.21.0",
+    "next": "14.2.4",
+    "react": "^18",
+    "react-dom": "^18"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

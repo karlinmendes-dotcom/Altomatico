@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { chatSession } from '@/utils/AiModel'
 import { useMutation } from 'convex/react'
-import { api } from '../../../../convex/_generated/api'
+import { api } from '../../../../../convex/_generated/api'
 import { TotalUsageContext } from '@/app/(context)/TotalUsageContext'
 
 interface PROPS {

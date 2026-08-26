@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react';
 import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../../../convex/_generated/api';
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 

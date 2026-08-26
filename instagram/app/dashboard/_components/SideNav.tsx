@@ -1,65 +1,89 @@
 "use client"
-import React, { useEffect } from 'react'
-import Image from 'next/image'
-import { Home, LucideFileClock, Settings, WalletCards } from 'lucide-react'
+import React from 'react'
+import { Home, Instagram, Youtube, Settings, BarChart3 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import UsageTrack from './UsageTrack'
-// Clerk removido - usando Convex
 
-function  SideNav() {
+function SideNav() {
   const MenuList = [
     {
-      name: 'Home', 
-      icon:Home,
-      path:'/dashboard/'
+      name: 'Dashboard',
+      icon: Home,
+      path: '/dashboard/',
+      color: 'text-purple-500',
     },
     {
-      name: 'History', 
-      icon:LucideFileClock,
-      path:'/dashboard/history'
+      name: 'Instagram',
+      icon: Instagram,
+      path: '/dashboard/instagram',
+      color: 'text-pink-500',
     },
-    // {
-    //   name: 'Billing', 
-    //   icon:WalletCards,
-    //   path:'/dashboard/billing'
-    // },
     {
-      name: 'Setting', 
-      icon:Settings,
-      path:'/dashboard/settings'
-    }
+      name: 'YouTube',
+      icon: Youtube,
+      path: '/dashboard/youtube',
+      color: 'text-red-500',
+    },
+    {
+      name: 'Histórico',
+      icon: BarChart3,
+      path: '/dashboard/history',
+      color: 'text-blue-500',
+    },
+    {
+      name: 'Configurações',
+      icon: Settings,
+      path: '/dashboard/settings',
+      color: 'text-gray-500',
+    },
   ]
   const path = usePathname();
-  useEffect(()=>{
-    console.log(path)
-  },[]);
+
   return (
-    <div className='h-screen relative p-5 shadow-sm border bg-white'>
-      <div className='p-2 flex justify-center'>
-        <Link href = {'/dashboard/'}><Image src={'/logo.svg'} alt='logo' width={160} height={100}/></Link>
-      
+    <div className='h-screen relative p-5 bg-gray-900 text-white flex flex-col'>
+      {/* Logo */}
+      <div className='flex items-center gap-3 mb-8 px-2'>
+        <div className='w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center'>
+          <span className='font-bold text-lg'>A</span>
+        </div>
+        <div>
+          <h2 className='font-bold text-lg leading-tight'>Altomatico</h2>
+          <p className='text-xs text-gray-400'>Conteúdo com IA</p>
+        </div>
       </div>
-      <hr className='my-6 border'/>
-      <div className='mt-3'>
-      <div className='flex items-center gap-2 mb-1 p-3'>
-      <div className='w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center'>U</div>
-      <h2 className='text-lg'>Profile</h2>
-      </div>
-        {MenuList.map((menu, index)=>(
-          <Link href = {menu.path}>
-          <div className={`flex gap-2 mb-2 p-3
-          hover:bg-primary hover:text-white rounded-lg cursor-pointer items-center ${path==menu.path&&'bg-primary text-white'}`}>
-            <menu.icon className='h-6 w-6'/>
-            <h2 className='text-lg'>{menu.name}</h2>
-          </div>
+
+      {/* Menu */}
+      <div className='flex-1'>
+        <p className='text-xs text-gray-500 uppercase tracking-wider mb-3 px-2'>Menu</p>
+        {MenuList.map((menu, index) => (
+          <Link href={menu.path} key={index}>
+            <div className={`flex items-center gap-3 mb-1 px-3 py-2.5 rounded-lg cursor-pointer transition
+              ${path === menu.path
+                ? 'bg-white/10 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}>
+              <menu.icon className={`w-5 h-5 ${path === menu.path ? menu.color : ''}`} />
+              <span className='font-medium'>{menu.name}</span>
+              {path === menu.path && (
+                <div className='ml-auto w-1.5 h-1.5 bg-purple-500 rounded-full'></div>
+              )}
+            </div>
           </Link>
         ))}
       </div>
-      <div className='absolute bottom-10 left-0 w-full'>
-        <UsageTrack/>
+
+      {/* User */}
+      <div className='border-t border-white/10 pt-4 px-2'>
+        <div className='flex items-center gap-3'>
+          <div className='w-9 h-9 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center'>
+            <span className='text-white text-sm font-medium'>K</span>
+          </div>
+          <div className='flex-1 min-w-0'>
+            <p className='text-sm font-medium truncate'>Karlyn</p>
+            <p className='text-xs text-gray-500 truncate'>Plano Gratuito</p>
+          </div>
+        </div>
       </div>
-      
     </div>
   )
 }

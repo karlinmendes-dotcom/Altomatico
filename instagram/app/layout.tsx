@@ -3,11 +3,13 @@ import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const inter = Outfit({ subsets: ["latin"] });
+export const dynamic = "force-dynamic";
+
+const inter = Outfit ({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AI CONTENT GENERATOR",
-  description: "GENERATE AI CONTENT",
+  title: "Altomatico - Gerador de Conteúdo IA",
+  description: "Gere conteúdo automaticamente para Instagram e YouTube com IA",
 };
 
 export default function RootLayout({

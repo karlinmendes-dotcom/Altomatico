@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Convex handles authentication through its own provider
-  // This middleware is simplified for now
+  // No auth middleware for now - Convex handles auth
   return NextResponse.next();
 }
 
