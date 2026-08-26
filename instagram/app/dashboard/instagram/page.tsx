@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { Instagram, Send, Loader2, Copy, Sparkles, CheckCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useMutation } from 'convex/react'
+import { useMutation, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 
 const postTypes = [
@@ -28,9 +28,11 @@ export default function InstagramPage() {
   const [generated, setGenerated] = useState<{ caption: string; hashtags: string[]; firstLine: string; cta: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [aiSource, setAiSource] = useState<'gemini' | 'local' | null>(null)
 
   const createContent = useMutation(api.contents.create)
   const updateScript = useMutation(api.contents.updateScript)
+  const generatePost = useAction(api.generateContent.generateInstagramPost)
 
   const handleGenerate = async () => {
     if (!topic) return
@@ -38,6 +40,7 @@ export default function InstagramPage() {
     setError(null)
     setGenerated(null)
     setSaved(false)
+    setAiSource(null)
 
     try {
       // 1. Criar conteúdo no Convex
@@ -51,17 +54,37 @@ export default function InstagramPage() {
         createdBy: 'user',
       })
 
-      // 2. Gerar conteúdo localmente (seguro, sem exposição de API key)
-      // A API key do Gemini está no backend (Convex Action generateContent)
-      // Para uso futuro, usar: api.generateContent.generateInstagramPost
-      const caption = generateCaption(topic, niche, tone)
-      const hashtags = generateHashtags(topic, niche)
-      const firstLine = caption.split('\n')[0] || topic
-      const cta = 'Salve e compartilhe!'
+      // 2. Tentar gerar com Gemini real via Convex Action
+      let caption = ''
+      let hashtags: string[] = []
+      let firstLine = ''
+      let cta = ''
+
+      try {
+        const result = await generatePost({
+          topic,
+          niche: niche || undefined,
+          tone,
+          postType: selectedType,
+        })
+        caption = result.caption
+        hashtags = result.hashtags
+        firstLine = result.firstLine
+        cta = result.cta
+        setAiSource('gemini')
+      } catch {
+        // Fallback local se Gemini não disponível
+        caption = generateCaption(topic, niche, tone)
+        hashtags = generateHashtags(topic, niche)
+        firstLine = caption.split('\n')[0] || topic
+        cta = 'Salve e compartilhe!'
+        setAiSource('local')
+        setError('Gemini indisponível. Conteúdo gerado localmente.')
+      }
 
       setGenerated({ caption, hashtags, firstLine, cta })
 
-      // 3. Salvar roteiro no Convex
+      // 3. Salvar no Convex
       await updateScript({
         contentId,
         script: caption,
@@ -79,7 +102,7 @@ export default function InstagramPage() {
         firstLine: caption.split('\n')[0] || topic,
         cta: 'Salve e compartilhe!',
       })
-      setError('Erro ao salvar no servidor. Conteúdo gerado localmente.')
+      setAiSource('local')
     } finally {
       setLoading(false)
     }
@@ -175,9 +198,9 @@ export default function InstagramPage() {
               </div>
 
               {error && (
-                <div className='bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2'>
-                  <AlertCircle className='w-4 h-4 text-red-500' />
-                  <span className='text-sm text-red-700'>{error}</span>
+                <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center gap-2'>
+                  <AlertCircle className='w-4 h-4 text-yellow-500' />
+                  <span className='text-sm text-yellow-700'>{error}</span>
                 </div>
               )}
 
@@ -187,7 +210,7 @@ export default function InstagramPage() {
                 className='w-full bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white py-6 text-lg'
               >
                 {loading ? (
-                  <><Loader2 className='w-5 h-5 animate-spin mr-2' /> Gerando...</>
+                  <><Loader2 className='w-5 h-5 animate-spin mr-2' /> Gerando com IA...</>
                 ) : (
                   <><Sparkles className='w-5 h-5 mr-2' /> Gerar Conteúdo</>
                 )}
@@ -202,6 +225,17 @@ export default function InstagramPage() {
             <h3 className='font-bold text-gray-900 mb-4'>Pré-visualização</h3>
             {generated ? (
               <div className='space-y-4'>
+                {/* Fonte da IA */}
+                {aiSource && (
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium w-fit ${
+                    aiSource === 'gemini' 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {aiSource === 'gemini' ? '✨ Gerado por Gemini IA' : '📝 Geração local'}
+                  </div>
+                )}
+
                 {/* Instagram Mock */}
                 <div className='border rounded-xl overflow-hidden'>
                   <div className='flex items-center gap-3 p-3 border-b'>
@@ -231,7 +265,6 @@ export default function InstagramPage() {
                 <Button
                   onClick={() => {
                     navigator.clipboard.writeText(generated.caption + '\n\n' + generated.hashtags.join(' '))
-                    setSaved(true)
                   }}
                   variant='outline'
                   className='w-full'

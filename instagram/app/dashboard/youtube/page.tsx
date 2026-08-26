@@ -4,7 +4,7 @@ import { Youtube, Loader2, Sparkles, Play, Mic, Captions, Video, AlertCircle, Ch
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useMutation } from 'convex/react'
+import { useMutation, useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 
 const videoStyles = [
@@ -32,9 +32,11 @@ export default function YouTubePage() {
   const [title, setTitle] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [aiSource, setAiSource] = useState<'gemini' | 'local' | null>(null)
 
   const createContent = useMutation(api.contents.create)
   const updateScriptMutation = useMutation(api.contents.updateScript)
+  const generateYouTube = useAction(api.generateContent.generateYouTubeScript)
 
   const handleGenerate = async () => {
     if (!topic) return
@@ -42,6 +44,7 @@ export default function YouTubePage() {
     setError(null)
     setStep(1)
     setSaved(false)
+    setAiSource(null)
 
     try {
       // 1. Criar conteúdo no Convex
@@ -57,18 +60,33 @@ export default function YouTubePage() {
         createdBy: 'user',
       })
 
-      // 2. Pipeline de geração real com etapas
-      await delay(800)
+      // 2. Pipeline de geração
+      await delay(600)
       setStep(2)
-      await delay(600)
+      await delay(400)
       setStep(3)
-      await delay(600)
+      await delay(400)
       setStep(4)
 
-      // 3. Gerar roteiro estruturado
-      const generatedTitle = topic
-      const generatedScript = generateScript(topic, description, selectedStyle)
-      
+      // 3. Gerar roteiro com Gemini real ou local
+      let generatedTitle = topic
+      let generatedScript = ''
+
+      try {
+        const result = await generateYouTube({
+          topic,
+          style: selectedStyle,
+          voice,
+        })
+        generatedTitle = result.title
+        generatedScript = result.script
+        setAiSource('gemini')
+      } catch {
+        generatedScript = generateScript(topic, description, selectedStyle)
+        setAiSource('local')
+        setError('Gemini indisponível. Roteiro gerado localmente.')
+      }
+
       setTitle(generatedTitle)
       setScript(generatedScript)
 
@@ -86,7 +104,7 @@ export default function YouTubePage() {
       const generatedScript = generateScript(topic, description, selectedStyle)
       setScript(generatedScript)
       setTitle(topic)
-      setError('Erro ao salvar no servidor. Roteiro gerado localmente.')
+      setAiSource('local')
     } finally {
       setLoading(false)
     }
@@ -177,9 +195,9 @@ export default function YouTubePage() {
               </div>
 
               {error && (
-                <div className='bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2'>
-                  <AlertCircle className='w-4 h-4 text-red-500' />
-                  <span className='text-sm text-red-700'>{error}</span>
+                <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center gap-2'>
+                  <AlertCircle className='w-4 h-4 text-yellow-500' />
+                  <span className='text-sm text-yellow-700'>{error}</span>
                 </div>
               )}
 
@@ -203,10 +221,10 @@ export default function YouTubePage() {
               <h3 className='font-bold text-gray-900 mb-4'>Progresso</h3>
               <div className='space-y-3'>
                 {[
-                  { s: 1, label: 'Analisando tema e gerando estrutura', icon: <Sparkles className='w-4 h-4' /> },
-                  { s: 2, label: 'Gerando roteiro com IA', icon: <Video className='w-4 h-4' /> },
-                  { s: 3, label: 'Criando capítulos e timestamps', icon: <Mic className='w-4 h-4' /> },
-                  { s: 4, label: 'Otimizando SEO e tags', icon: <Captions className='w-4 h-4' /> },
+                  { s: 1, label: 'Analisando tema', icon: <Sparkles className='w-4 h-4' /> },
+                  { s: 2, label: aiSource === 'gemini' ? 'Gemini gerando roteiro...' : 'Gerando estrutura...', icon: <Video className='w-4 h-4' /> },
+                  { s: 3, label: 'Criando capítulos', icon: <Mic className='w-4 h-4' /> },
+                  { s: 4, label: 'Otimizando SEO', icon: <Captions className='w-4 h-4' /> },
                 ].map(item => (
                   <div key={item.s} className={`flex items-center gap-3 p-3 rounded-lg ${step >= item.s ? 'bg-green-50' : 'bg-gray-50'}`}>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= item.s ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
@@ -226,6 +244,17 @@ export default function YouTubePage() {
             <h3 className='font-bold text-gray-900 mb-4'>Pré-visualização</h3>
             {script ? (
               <div className='space-y-4'>
+                {/* Fonte da IA */}
+                {aiSource && (
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium w-fit ${
+                    aiSource === 'gemini' 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {aiSource === 'gemini' ? '✨ Gerado por Gemini IA' : '📝 Geração local'}
+                  </div>
+                )}
+
                 {/* YouTube Mock */}
                 <div className='border rounded-xl overflow-hidden'>
                   <div className='aspect-video bg-gradient-to-br from-red-100 to-gray-100 flex items-center justify-center relative'>
