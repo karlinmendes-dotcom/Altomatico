@@ -21,4 +21,3 @@ function SearchSection({onSearchInput}:any) {
 }
 
 export default SearchSection
-SearchSection   

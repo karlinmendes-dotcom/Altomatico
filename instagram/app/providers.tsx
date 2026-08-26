@@ -1,7 +1,7 @@
 "use client";
 
 import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { ReactNode, useMemo } from "react";
+import { ReactNode } from "react";
 
 const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "https://first-eagle-283.convex.cloud";
 

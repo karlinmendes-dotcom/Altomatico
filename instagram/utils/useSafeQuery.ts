@@ -1,24 +1,14 @@
 "use client";
 import { useQuery as useConvexQuery } from "convex/react";
-import { useState, useEffect } from "react";
 
 /**
- * Safe wrapper around Convex useQuery that returns null during SSR/build
- * when ConvexProvider is not available.
+ * Wrapper around Convex useQuery.
+ * The hook must be called unconditionally per React rules.
+ * Returns undefined when the result is not yet available.
  */
 export function useSafeQuery(
-  queryRef: any,
-  args?: any
-): any {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  // Try to use the real query, but catch errors from missing provider
-  if (!mounted) return undefined;
-  
-  try {
-    return useConvexQuery(queryRef, args);
-  } catch {
-    return undefined;
-  }
+  queryRef: Parameters<typeof useConvexQuery>[0],
+  args?: Parameters<typeof useConvexQuery>[1]
+) {
+  return useConvexQuery(queryRef, args as any);
 }

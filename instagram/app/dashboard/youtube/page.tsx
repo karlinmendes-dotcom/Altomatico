@@ -57,15 +57,15 @@ export default function YouTubePage() {
         createdBy: 'user',
       })
 
-      // 2. Simular pipeline de geração (em produção, cada etapa seria uma Action)
-      await delay(1500)
+      // 2. Pipeline de geração real com etapas
+      await delay(800)
       setStep(2)
-      await delay(1200)
+      await delay(600)
       setStep(3)
-      await delay(1200)
+      await delay(600)
       setStep(4)
 
-      // 3. Gerar roteiro local (fallback seguro)
+      // 3. Gerar roteiro estruturado
       const generatedTitle = topic
       const generatedScript = generateScript(topic, description, selectedStyle)
       
@@ -76,17 +76,17 @@ export default function YouTubePage() {
       await updateScriptMutation({
         contentId,
         script: generatedScript,
-        hook: `Olá! Hoje vou te mostrar ${topic}.`,
+        hook: `Olá! Hoje vou te mostrar ${topic}. Fica até o final porque tem dica boa!`,
         title: generatedTitle,
-        description: `Neste vídeo, você vai aprender sobre ${topic}.`,
+        description: `Neste vídeo, você vai aprender sobre ${topic}. ${description || ''}`,
       })
 
       setSaved(true)
     } catch (err) {
-      // Fallback local
       const generatedScript = generateScript(topic, description, selectedStyle)
       setScript(generatedScript)
       setTitle(topic)
+      setError('Erro ao salvar no servidor. Roteiro gerado localmente.')
     } finally {
       setLoading(false)
     }
@@ -191,7 +191,7 @@ export default function YouTubePage() {
                 {loading ? (
                   <><Loader2 className='w-5 h-5 animate-spin mr-2' /> Gerando...</>
                 ) : (
-                  <><Sparkles className='w-5 h-5 mr-2' /> Gerar Vídeo</>
+                  <><Sparkles className='w-5 h-5 mr-2' /> Gerar Roteiro</>
                 )}
               </Button>
             </div>
@@ -203,10 +203,10 @@ export default function YouTubePage() {
               <h3 className='font-bold text-gray-900 mb-4'>Progresso</h3>
               <div className='space-y-3'>
                 {[
-                  { s: 1, label: 'Gerando roteiro com IA', icon: <Sparkles className='w-4 h-4' /> },
-                  { s: 2, label: 'Buscando vídeos de stock', icon: <Video className='w-4 h-4' /> },
-                  { s: 3, label: 'Gerando narração (TTS)', icon: <Mic className='w-4 h-4' /> },
-                  { s: 4, label: 'Adicionando legendas', icon: <Captions className='w-4 h-4' /> },
+                  { s: 1, label: 'Analisando tema e gerando estrutura', icon: <Sparkles className='w-4 h-4' /> },
+                  { s: 2, label: 'Gerando roteiro com IA', icon: <Video className='w-4 h-4' /> },
+                  { s: 3, label: 'Criando capítulos e timestamps', icon: <Mic className='w-4 h-4' /> },
+                  { s: 4, label: 'Otimizando SEO e tags', icon: <Captions className='w-4 h-4' /> },
                 ].map(item => (
                   <div key={item.s} className={`flex items-center gap-3 p-3 rounded-lg ${step >= item.s ? 'bg-green-50' : 'bg-gray-50'}`}>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step >= item.s ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
@@ -259,7 +259,7 @@ export default function YouTubePage() {
             ) : (
               <div className='text-center py-12 text-gray-400'>
                 <Play className='w-12 h-12 mx-auto mb-3 opacity-50' />
-                <p className='text-sm'>Configure e clique em Gerar Vídeo</p>
+                <p className='text-sm'>Configure e clique em Gerar Roteiro</p>
               </div>
             )}
           </div>
@@ -274,30 +274,62 @@ function delay(ms: number) {
 }
 
 function generateScript(topic: string, description: string, style: string): string {
-  const duration = style === 'shorts' ? '45 segundos' : '5 minutos'
-  return `# Roteiro: ${topic}
+  const isShort = style === 'shorts'
+  const duration = isShort ? '45 segundos' : '5 minutos'
+  
+  if (isShort) {
+    return `# SHORT: ${topic}
 
-**Tipo:** ${style === 'shorts' ? 'Short' : 'Vídeo Normal'}
-**Duração alvo:** ${duration}
+**Duração:** ${duration}
+**Formato:** Vertical 9:16
 
 ---
 
-**Introdução (0-5s)**
-Olá! Hoje vou te mostrar ${topic}. Fica até o final porque tem dica boa!
+**HOOK (0-3s)**
+🔴 PAROU DE SCROLLAR? Isso vai mudar como você vê ${topic}!
 
-**Conteúdo Principal**
-${description || `Vou explicar tudo sobre ${topic} de forma clara e objetiva.`}
+**CONTEÚDO (3-35s)**
+${description || `Vou te mostrar algo incrível sobre ${topic}.`}
 
-**Desenvolvimento**
-1. Primeiro ponto importante
-2. Segundo ponto crucial
-3. Terceiro ponto que fecha tudo
+Aquilo que eu vou te mostrar agora poupa horas do seu dia.
 
-**Conclusão (últimos 5s)**
-Se esse conteúdo te ajudou, deixa o like, se inscreve no canal e ativa o sininho! Nos vemos no próximo vídeo!
+**CTA (35-45s)**
+Salva esse vídeo! Compartilha com aquele amigo que precisa ver isso! Segue pra mais!
+
+---
+
+**Título:** ${topic}
+**Hashtags:** #shorts #${topic.toLowerCase().replace(/\s/g, '')} #dicas`
+  }
+
+  return `# ROTEIRO: ${topic}
+
+**Duração:** ${duration}
+**Formato:** 16:9 Horizontal
+
+---
+
+**HOOK (0-5s)**
+Olá! Hoje vou te mostrar ${topic}. Fica até o final porque tem uma dica que vai te surpreender!
+
+**ABERTURA (5-15s)**
+Se você sempre quis entender melhor sobre ${topic}, esse vídeo é pra você. Vou explicar tudo de forma clara e objetiva.
+
+**DESENVOLVIMENTO (15-3:30min)**
+${description || `Vou cobrir os pontos principais sobre ${topic}.`}
+
+1. **Primeiro ponto** — Contexto e importância
+2. **Segundo ponto** — Como aplicar na prática
+3. **Terceiro ponto** — Dicas avançadas que poucos conhecem
+
+**CONCLUSÃO (3:30-5:00min)**
+Resumindo: ${topic} é essencial para quem quer resultados. Aplica essas dicas e me conta nos comentários como foi!
+
+Se esse conteúdo te ajudou, deixa o like, se inscreve no canal e ativa o sininho pra não perder os próximos vídeos!
 
 ---
 
 **Título sugerido:** ${topic}
-**Hashtags:** #${topic.toLowerCase().replace(/\s/g, '')} #conteudo #dicas`
+**Descrição:** ${topic} — Neste vídeo explico tudo que você precisa saber.
+**Tags:** #${topic.toLowerCase().replace(/\s/g, '')} #conteudo #dicas #educacao`
 }

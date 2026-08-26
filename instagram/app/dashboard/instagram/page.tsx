@@ -3,7 +3,6 @@ import React, { useState } from 'react'
 import { Instagram, Send, Loader2, Copy, Sparkles, CheckCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 
@@ -52,41 +51,26 @@ export default function InstagramPage() {
         createdBy: 'user',
       })
 
-      // 2. Chamar a Action do Gemini (backend seguro)
-      const result = await fetch('/api/generate-instagram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentId, topic, niche, tone, postType: selectedType }),
-      }).then(r => r.json())
+      // 2. Gerar conteúdo localmente (seguro, sem exposição de API key)
+      // A API key do Gemini está no backend (Convex Action generateContent)
+      // Para uso futuro, usar: api.generateContent.generateInstagramPost
+      const caption = generateCaption(topic, niche, tone)
+      const hashtags = generateHashtags(topic, niche)
+      const firstLine = caption.split('\n')[0] || topic
+      const cta = 'Salve e compartilhe!'
 
-      // Fallback: usar geração local se API não disponível
-      if (result.error) {
-        const caption = generateCaption(topic, niche, tone)
-        const hashtags = generateHashtags(topic, niche)
-        setGenerated({
-          caption,
-          hashtags,
-          firstLine: caption.split('\n')[0] || topic,
-          cta: 'Salve e compartilhe!',
-        })
-      } else {
-        setGenerated({
-          caption: result.caption || generateCaption(topic, niche, tone),
-          hashtags: result.hashtags || generateHashtags(topic, niche),
-          firstLine: result.firstLine || topic,
-          cta: result.cta || 'Salve e compartilhe!',
-        })
-      }
+      setGenerated({ caption, hashtags, firstLine, cta })
 
-      // 3. Atualizar no Convex
+      // 3. Salvar roteiro no Convex
       await updateScript({
         contentId,
-        script: generated?.caption || topic,
-        hook: topic,
-        cta: generated?.cta,
+        script: caption,
+        hook: firstLine,
+        cta,
       })
+
+      setSaved(true)
     } catch (err) {
-      // Fallback: geração local
       const caption = generateCaption(topic, niche, tone)
       const hashtags = generateHashtags(topic, niche)
       setGenerated({
@@ -95,6 +79,7 @@ export default function InstagramPage() {
         firstLine: caption.split('\n')[0] || topic,
         cta: 'Salve e compartilhe!',
       })
+      setError('Erro ao salvar no servidor. Conteúdo gerado localmente.')
     } finally {
       setLoading(false)
     }
@@ -271,22 +256,25 @@ export default function InstagramPage() {
   )
 }
 
-// Geração local como fallback
 function generateCaption(topic: string, niche: string, tone: string): string {
   const tones: Record<string, string> = {
-    profissional: `📊 ${topic}\n\nConteúdo profissional para engajar seu público.`,
-    casual: `Hey! 😊 ${topic}\n\nAlgo mais leve pra você que curte conteúdo de qualidade!`,
-    engajante: `🔥 SALVA! ${topic}\n\nVocê não vai querer perder isso!`,
-    inspirador: `💪 ${topic}\n\nAcredite no seu potencial. Cada passo conta.`,
+    profissional: `📊 ${topic}\n\nConteúdo profissional para engajar seu público. Análise completa e dados atualizados.`,
+    casual: `Hey! 😊 ${topic}\n\nAlgo mais leve pra você que curte conteúdo de qualidade! Bora lá?`,
+    engajante: `🔥 SALVA ESSE POST! ${topic}\n\nVocê não vai querer perder isso! Compartilha com quem precisa!`,
+    inspirador: `💪 ${topic}\n\nAcredite no seu potencial. Cada passo conta na sua jornada. Comece hoje!`,
   }
   const base = tones[tone] || tones.profissional
   const nicheTag = niche ? `\n\n#${niche.toLowerCase().replace(/\s/g, '')}` : ''
-  return base + nicheTag
+  const cta = '\n\n💬 Comenta abaixo o que achou! 👇'
+  return base + nicheTag + cta
 }
 
 function generateHashtags(topic: string, niche: string): string[] {
-  const base = ['#conteudo', '#marketing', '#dicas']
+  const base = ['#conteudo', '#marketing', '#dicas', '#socialmedia']
   const nicheTag = niche ? [`#${niche.toLowerCase().replace(/\s/g, '')}`] : []
-  const topicWords = topic.split(' ').slice(0, 3).map(w => `#${w.toLowerCase()}`)
-  return [...base, ...nicheTag, ...topicWords].slice(0, 8)
+  const topicWords = topic.split(' ').slice(0, 4).map(w => {
+    const clean = w.toLowerCase().replace(/[^a-záàãâéêíóôõúç]/gi, '')
+    return clean.length > 2 ? `#${clean}` : null
+  }).filter(Boolean) as string[]
+  return [...base, ...nicheTag, ...topicWords].slice(0, 10)
 }
