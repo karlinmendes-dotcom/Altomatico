@@ -1,9 +1,11 @@
 'use client'
 import React, { useState } from 'react'
-import { Youtube, Loader2, Sparkles, Play, Mic, Captions, Video } from 'lucide-react'
+import { Youtube, Loader2, Sparkles, Play, Mic, Captions, Video, AlertCircle, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 
 const videoStyles = [
   { id: 'shorts', label: 'Shorts', icon: '📱', desc: 'Vídeo vertical até 60s' },
@@ -27,20 +29,67 @@ export default function YouTubePage() {
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState(0)
   const [script, setScript] = useState('')
+  const [title, setTitle] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const createContent = useMutation(api.contents.create)
+  const updateScriptMutation = useMutation(api.contents.updateScript)
 
   const handleGenerate = async () => {
     if (!topic) return
     setLoading(true)
+    setError(null)
     setStep(1)
-    // Simular geração de roteiro
-    await new Promise(r => setTimeout(r, 2000))
-    setScript(`# Roteiro: ${topic}\n\n**Introdução (0-5s)**\nOlá! Hoje vou te mostrar ${topic}.\n\n**Conteúdo Principal (5-45s)**\n${description || 'Vou explicar tudo passo a passo para você entender perfeitamente.'}\n\n**Conclusão (45-60s)**\nSe gostou, deixe seu like e se inscreva!`)
-    setStep(2)
-    await new Promise(r => setTimeout(r, 1500))
-    setStep(3)
-    await new Promise(r => setTimeout(r, 1500))
-    setStep(4)
-    setLoading(false)
+    setSaved(false)
+
+    try {
+      // 1. Criar conteúdo no Convex
+      const contentId = await createContent({
+        title: topic,
+        topic,
+        platform: 'youtube',
+        contentType: selectedStyle,
+        tone: 'educativo',
+        voice,
+        style: selectedStyle,
+        description,
+        createdBy: 'user',
+      })
+
+      // 2. Simular pipeline de geração (em produção, cada etapa seria uma Action)
+      await delay(1500)
+      setStep(2)
+      await delay(1200)
+      setStep(3)
+      await delay(1200)
+      setStep(4)
+
+      // 3. Gerar roteiro local (fallback seguro)
+      const generatedTitle = topic
+      const generatedScript = generateScript(topic, description, selectedStyle)
+      
+      setTitle(generatedTitle)
+      setScript(generatedScript)
+
+      // 4. Salvar no Convex
+      await updateScriptMutation({
+        contentId,
+        script: generatedScript,
+        hook: `Olá! Hoje vou te mostrar ${topic}.`,
+        title: generatedTitle,
+        description: `Neste vídeo, você vai aprender sobre ${topic}.`,
+      })
+
+      setSaved(true)
+    } catch (err) {
+      // Fallback local
+      const generatedScript = generateScript(topic, description, selectedStyle)
+      setScript(generatedScript)
+      setTitle(topic)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -127,6 +176,13 @@ export default function YouTubePage() {
                 </div>
               </div>
 
+              {error && (
+                <div className='bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2'>
+                  <AlertCircle className='w-4 h-4 text-red-500' />
+                  <span className='text-sm text-red-700'>{error}</span>
+                </div>
+              )}
+
               <Button
                 onClick={handleGenerate}
                 disabled={!topic || loading}
@@ -179,7 +235,7 @@ export default function YouTubePage() {
                     </div>
                   </div>
                   <div className='p-3'>
-                    <p className='font-semibold text-sm'>{topic}</p>
+                    <p className='font-semibold text-sm'>{title || topic}</p>
                     <p className='text-xs text-gray-500 mt-1'>Altomatico • Agora</p>
                   </div>
                 </div>
@@ -188,6 +244,13 @@ export default function YouTubePage() {
                   <p className='text-xs font-medium text-gray-500 mb-2'>ROTEIRO</p>
                   <p className='text-sm text-gray-700 whitespace-pre-line max-h-40 overflow-y-auto'>{script}</p>
                 </div>
+
+                {saved && (
+                  <div className='bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2'>
+                    <CheckCircle className='w-4 h-4 text-green-500' />
+                    <span className='text-sm text-green-700'>Salvo no Convex!</span>
+                  </div>
+                )}
 
                 <Button className='w-full bg-gradient-to-r from-red-500 to-red-700 text-white'>
                   <Youtube className='w-4 h-4 mr-2' /> Publicar no YouTube
@@ -204,4 +267,37 @@ export default function YouTubePage() {
       </div>
     </div>
   )
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function generateScript(topic: string, description: string, style: string): string {
+  const duration = style === 'shorts' ? '45 segundos' : '5 minutos'
+  return `# Roteiro: ${topic}
+
+**Tipo:** ${style === 'shorts' ? 'Short' : 'Vídeo Normal'}
+**Duração alvo:** ${duration}
+
+---
+
+**Introdução (0-5s)**
+Olá! Hoje vou te mostrar ${topic}. Fica até o final porque tem dica boa!
+
+**Conteúdo Principal**
+${description || `Vou explicar tudo sobre ${topic} de forma clara e objetiva.`}
+
+**Desenvolvimento**
+1. Primeiro ponto importante
+2. Segundo ponto crucial
+3. Terceiro ponto que fecha tudo
+
+**Conclusão (últimos 5s)**
+Se esse conteúdo te ajudou, deixa o like, se inscreve no canal e ativa o sininho! Nos vemos no próximo vídeo!
+
+---
+
+**Título sugerido:** ${topic}
+**Hashtags:** #${topic.toLowerCase().replace(/\s/g, '')} #conteudo #dicas`
 }

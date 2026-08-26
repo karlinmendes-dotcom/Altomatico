@@ -2,43 +2,334 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  // Tabela de saídas de IA (Instagram)
-  aiOutputs: defineTable({
-    formData: v.string(),
-    aiResponse: v.optional(v.string()),
-    templateSlug: v.string(),
-    createdBy: v.string(),
-    createdAt: v.string(),
-  })
-    .index("by_createdBy", ["createdBy"])
-    .index("by_templateSlug", ["templateSlug"])
-    .index("by_createdAt", ["createdAt"]),
+  // ═══════════════════════════════════════════════════════════════
+  // CONTEÚDO — Pipeline principal
+  // ═══════════════════════════════════════════════════════════════
+  contents: defineTable({
+    // Identidade
+    title: v.string(),
+    description: v.optional(v.string()),
+    topic: v.string(),
+    niche: v.optional(v.string()),
+    platform: v.union(v.literal("youtube"), v.literal("instagram"), v.literal("multi")),
+    contentType: v.string(), // "post", "reel", "story", "carousel", "short", "long", "tutorial", "podcast"
 
-  // Tabela de tarefas de vídeo (YouTube)
-  videoTasks: defineTable({
-    theme: v.string(),
+    // Pipeline status
     status: v.union(
-      v.literal("pending"),
-      v.literal("processing"),
-      v.literal("completed"),
-      v.literal("failed")
+      v.literal("idea"),
+      v.literal("research"),
+      v.literal("strategy"),
+      v.literal("script"),
+      v.literal("production"),
+      v.literal("review"),
+      v.literal("approved"),
+      v.literal("scheduled"),
+      v.literal("published"),
+      v.literal("failed"),
+      v.literal("archived")
     ),
+    progress: v.number(), // 0-100
+
+    // Geração
+    aiModel: v.optional(v.string()),
+    aiPrompt: v.optional(v.string()),
+    aiResponse: v.optional(v.string()),
+    script: v.optional(v.string()),
+    hook: v.optional(v.string()),
+    cta: v.optional(v.string()),
+    tone: v.optional(v.string()),
+    voice: v.optional(v.string()),
+    style: v.optional(v.string()),
+    language: v.optional(v.string()),
+    country: v.optional(v.string()),
+    duration: v.optional(v.string()),
+
+    // SEO
+    seoTitle: v.optional(v.string()),
+    seoTitleAlternatives: v.optional(v.array(v.string())),
+    seoDescription: v.optional(v.string()),
+    seoKeywords: v.optional(v.array(v.string())),
+    seoHashtags: v.optional(v.array(v.string())),
+    seoScore: v.optional(v.number()),
+
+    // Scores
+    originalityScore: v.optional(v.number()),
+    policyScore: v.optional(v.number()),
+    opportunityScore: v.optional(v.number()),
+    confidenceScore: v.optional(v.number()),
+
+    // Mídia
+    thumbnailUrl: v.optional(v.string()),
+    mediaUrls: v.optional(v.array(v.string())),
     videoUrl: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
+    audioUrl: v.optional(v.string()),
+    subtitlesUrl: v.optional(v.string()),
+    captionText: v.optional(v.string()),
+
+    // Publicação
+    publishedUrl: v.optional(v.string()),
+    publishedAt: v.optional(v.string()),
+    scheduledFor: v.optional(v.string()),
+    visibility: v.optional(v.union(v.literal("public"), v.literal("private"), v.literal("unlisted"))),
+
+    // Content DNA
+    contentDna: v.optional(v.object({
+      topic: v.optional(v.string()),
+      niche: v.optional(v.string()),
+      angle: v.optional(v.string()),
+      hookType: v.optional(v.string()),
+      emotion: v.optional(v.string()),
+      format: v.optional(v.string()),
+      duration: v.optional(v.string()),
+      voice: v.optional(v.string()),
+      visualStyle: v.optional(v.string()),
+      ctaType: v.optional(v.string()),
+      titleStyle: v.optional(v.string()),
+      thumbnailStyle: v.optional(v.string()),
+      publishingTime: v.optional(v.string()),
+    })),
+
+    // Policy
+    policyCheck: v.optional(v.object({
+      copyrightRisk: v.optional(v.string()),
+      spamRisk: v.optional(v.string()),
+      reusedContentRisk: v.optional(v.string()),
+      misinformationRisk: v.optional(v.string()),
+      aiDisclosureRequired: v.optional(v.boolean()),
+      overallRisk: v.optional(v.string()),
+      approved: v.optional(v.boolean()),
+      reason: v.optional(v.string()),
+    })),
+
+    // AI disclosure
+    aiGenerated: v.optional(v.boolean()),
+    aiAltered: v.optional(v.boolean()),
+    requiresDisclosure: v.optional(v.boolean()),
+    disclosureReason: v.optional(v.string()),
+
+    // Metadata
     createdBy: v.string(),
     createdAt: v.string(),
+    updatedAt: v.string(),
     completedAt: v.optional(v.string()),
+    errorAt: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    retryCount: v.number(),
+    tags: v.optional(v.array(v.string())),
   })
     .index("by_status", ["status"])
-    .index("by_createdBy", ["createdBy"]),
+    .index("by_platform", ["platform"])
+    .index("by_createdBy", ["createdBy"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_platform_status", ["platform", "status"])
+    .index("by_scheduledFor", ["scheduledFor"])
+    .index("by_contentType", ["contentType"]),
 
-  // Tabela de configurações do usuário
+  // ═══════════════════════════════════════════════════════════════
+  // TAREFAS — Fila de processamento
+  // ═══════════════════════════════════════════════════════════════
+  tasks: defineTable({
+    contentId: v.id("contents"),
+    type: v.union(
+      v.literal("research"),
+      v.literal("script"),
+      v.literal("video"),
+      v.literal("thumbnail"),
+      v.literal("seo"),
+      v.literal("publish"),
+      v.literal("analytics"),
+      v.literal("policy_check"),
+      v.literal("originality_check")
+    ),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    priority: v.number(), // 1-10
+    progress: v.number(), // 0-100
+    result: v.optional(v.string()),
+    error: v.optional(v.string()),
+    retryCount: v.number(),
+    maxRetries: v.number(),
+    startedAt: v.optional(v.string()),
+    completedAt: v.optional(v.string()),
+    createdAt: v.string(),
+    workerId: v.optional(v.string()),
+    metadata: v.optional(v.string()),
+  })
+    .index("by_contentId", ["contentId"])
+    .index("by_status", ["status"])
+    .index("by_type", ["type"])
+    .index("by_priority", ["priority"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONFIGURAÇÕES DO USUÁRIO
+  // ═══════════════════════════════════════════════════════════════
   userSettings: defineTable({
     userId: v.string(),
-    youtubeApiKey: v.optional(v.string()),
-    instagramApiKey: v.optional(v.string()),
+
+    // Perfil
+    displayName: v.optional(v.string()),
+    email: v.optional(v.string()),
+
+    // IA
     preferredLlm: v.optional(v.string()),
+    preferredImageModel: v.optional(v.string()),
+    preferredVoice: v.optional(v.string()),
+    language: v.optional(v.string()),
+    country: v.optional(v.string()),
+
+    // YouTube
+    youtubeChannelId: v.optional(v.string()),
+    youtubeChannelName: v.optional(v.string()),
+    youtubeConnected: v.optional(v.boolean()),
+
+    // Instagram
+    instagramAccountId: v.optional(v.string()),
+    instagramUsername: v.optional(v.string()),
+    instagramConnected: v.optional(v.boolean()),
+
+    // Marca / Identidade
+    brandName: v.optional(v.string()),
+    brandNiche: v.optional(v.string()),
+    brandTone: v.optional(v.string()),
+    brandVoice: v.optional(v.string()),
+    brandStyle: v.optional(v.string()),
+    brandKeywords: v.optional(v.array(v.string())),
+    prohibitedKeywords: v.optional(v.array(v.string())),
+    prohibitedTopics: v.optional(v.array(v.string())),
+
+    // Automação
+    automationMode: v.optional(v.union(
+      v.literal("manual"),
+      v.literal("semi"),
+      v.literal("automatic")
+    )),
+
+    // Horários
+    postingSchedule: v.optional(v.object({
+      monday: v.optional(v.array(v.object({ platform: v.string(), time: v.string() }))),
+      tuesday: v.optional(v.array(v.object({ platform: v.string(), time: v.string() }))),
+      wednesday: v.optional(v.array(v.object({ platform: v.string(), time: v.string() }))),
+      thursday: v.optional(v.array(v.object({ platform: v.string(), time: v.string() }))),
+      friday: v.optional(v.array(v.object({ platform: v.string(), time: v.string() }))),
+      saturday: v.optional(v.array(v.object({ platform: v.string(), time: v.string() }))),
+      sunday: v.optional(v.array(v.object({ platform: v.string(), time: v.string() }))),
+    })),
+
     createdAt: v.string(),
     updatedAt: v.string(),
   }).index("by_userId", ["userId"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // ANALYTICS — Dados de desempenho
+  // ═══════════════════════════════════════════════════════════════
+  analytics: defineTable({
+    contentId: v.id("contents"),
+    platform: v.union(v.literal("youtube"), v.literal("instagram")),
+    externalId: v.optional(v.string()), // ID na plataforma
+
+    // Métricas
+    views: v.number(),
+    impressions: v.optional(v.number()),
+    reach: v.optional(v.number()),
+    likes: v.number(),
+    comments: v.number(),
+    shares: v.optional(v.number()),
+    saves: v.optional(v.number()),
+    clickThroughRate: v.optional(v.number()),
+    averageViewDuration: v.optional(v.number()),
+    retentionRate: v.optional(v.number()),
+    subscribersGained: v.optional(v.number()),
+    profileVisits: v.optional(v.number()),
+
+    // YouTube específicos
+    watchTime: v.optional(v.number()),
+    ctr: v.optional(v.number()),
+    trafficSources: v.optional(v.string()),
+
+    // Instagram específicos
+    storyViews: v.optional(v.number()),
+
+    // Timestamps
+    collectedAt: v.string(),
+    period: v.string(), // "24h", "48h", "7d", "28d"
+    createdAt: v.string(),
+  })
+    .index("by_contentId", ["contentId"])
+    .index("by_platform", ["platform"])
+    .index("by_collectedAt", ["collectedAt"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // LEARNING — Aprendizado da IA
+  // ═══════════════════════════════════════════════════════════════
+  learnings: defineTable({
+    category: v.union(
+      v.literal("hook"),
+      v.literal("title"),
+      v.literal("thumbnail"),
+      v.literal("format"),
+      v.literal("duration"),
+      v.literal("timing"),
+      v.literal("topic"),
+      v.literal("cta"),
+      v.literal("voice"),
+      v.literal("style")
+    ),
+    insight: v.string(),
+    confidence: v.number(), // 0-1
+    basedOnContents: v.array(v.id("contents")),
+    platform: v.optional(v.union(v.literal("youtube"), v.literal("instagram"), v.literal("multi"))),
+    niche: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_category", ["category"])
+    .index("by_platform", ["platform"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // LOGS — Rastreabilidade
+  // ═══════════════════════════════════════════════════════════════
+  logs: defineTable({
+    action: v.string(),
+    contentId: v.optional(v.id("contents")),
+    taskId: v.optional(v.id("tasks")),
+    details: v.optional(v.string()),
+    level: v.union(v.literal("info"), v.literal("warning"), v.literal("error")),
+    source: v.string(), // qual módulo gerou
+    model: v.optional(v.string()),
+    promptVersion: v.optional(v.string()),
+    duration: v.optional(v.number()), // ms
+    success: v.boolean(),
+    errorMessage: v.optional(v.string()),
+    timestamp: v.string(),
+  })
+    .index("by_contentId", ["contentId"])
+    .index("by_level", ["level"])
+    .index("by_timestamp", ["timestamp"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // BRAND MEMORY — Memória de identidade
+  // ═══════════════════════════════════════════════════════════════
+  brandMemory: defineTable({
+    userId: v.string(),
+    category: v.union(
+      v.literal("tone"),
+      v.literal("style"),
+      v.literal("vocabulary"),
+      v.literal("topics"),
+      v.literal("positioning"),
+      v.literal("cta"),
+      v.literal("preference")
+    ),
+    key: v.string(),
+    value: v.string(),
+    confidence: v.number(),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_category", ["category"]),
 });

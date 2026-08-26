@@ -1,9 +1,11 @@
 'use client'
 import React, { useState } from 'react'
-import { Instagram, Send, Loader2, Copy, Sparkles, Hash, Image } from 'lucide-react'
+import { Instagram, Send, Loader2, Copy, Sparkles, CheckCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 
 const postTypes = [
   { id: 'post', label: 'Post', icon: '📷', desc: 'Postagem comum no feed' },
@@ -24,18 +26,78 @@ export default function InstagramPage() {
   const [topic, setTopic] = useState('')
   const [tone, setTone] = useState('profissional')
   const [loading, setLoading] = useState(false)
-  const [generated, setGenerated] = useState<{ caption: string; hashtags: string[] } | null>(null)
+  const [generated, setGenerated] = useState<{ caption: string; hashtags: string[]; firstLine: string; cta: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const createContent = useMutation(api.contents.create)
+  const updateScript = useMutation(api.contents.updateScript)
 
   const handleGenerate = async () => {
     if (!topic) return
     setLoading(true)
-    // Simular geração - em produção usa Gemini API
-    await new Promise(r => setTimeout(r, 2000))
-    setGenerated({
-      caption: `✨ ${topic}\n\n${getCaptionByTone(tone)}\n\n${niche ? `#${niche.toLowerCase().replace(/\s/g, '')}` : ''}`,
-      hashtags: generateHashtags(topic, niche),
-    })
-    setLoading(false)
+    setError(null)
+    setGenerated(null)
+    setSaved(false)
+
+    try {
+      // 1. Criar conteúdo no Convex
+      const contentId = await createContent({
+        title: topic,
+        topic,
+        platform: 'instagram',
+        contentType: selectedType,
+        niche,
+        tone,
+        createdBy: 'user',
+      })
+
+      // 2. Chamar a Action do Gemini (backend seguro)
+      const result = await fetch('/api/generate-instagram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentId, topic, niche, tone, postType: selectedType }),
+      }).then(r => r.json())
+
+      // Fallback: usar geração local se API não disponível
+      if (result.error) {
+        const caption = generateCaption(topic, niche, tone)
+        const hashtags = generateHashtags(topic, niche)
+        setGenerated({
+          caption,
+          hashtags,
+          firstLine: caption.split('\n')[0] || topic,
+          cta: 'Salve e compartilhe!',
+        })
+      } else {
+        setGenerated({
+          caption: result.caption || generateCaption(topic, niche, tone),
+          hashtags: result.hashtags || generateHashtags(topic, niche),
+          firstLine: result.firstLine || topic,
+          cta: result.cta || 'Salve e compartilhe!',
+        })
+      }
+
+      // 3. Atualizar no Convex
+      await updateScript({
+        contentId,
+        script: generated?.caption || topic,
+        hook: topic,
+        cta: generated?.cta,
+      })
+    } catch (err) {
+      // Fallback: geração local
+      const caption = generateCaption(topic, niche, tone)
+      const hashtags = generateHashtags(topic, niche)
+      setGenerated({
+        caption,
+        hashtags,
+        firstLine: caption.split('\n')[0] || topic,
+        cta: 'Salve e compartilhe!',
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -127,6 +189,13 @@ export default function InstagramPage() {
                 </div>
               </div>
 
+              {error && (
+                <div className='bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2'>
+                  <AlertCircle className='w-4 h-4 text-red-500' />
+                  <span className='text-sm text-red-700'>{error}</span>
+                </div>
+              )}
+
               <Button
                 onClick={handleGenerate}
                 disabled={!topic || loading}
@@ -155,7 +224,7 @@ export default function InstagramPage() {
                     <span className='font-semibold text-sm'>seu.perfil</span>
                   </div>
                   <div className='aspect-square bg-gradient-to-br from-pink-100 to-orange-100 flex items-center justify-center'>
-                    <Image className='w-12 h-12 text-pink-300' />
+                    <Instagram className='w-12 h-12 text-pink-300' />
                   </div>
                   <div className='p-3'>
                     <p className='text-sm whitespace-pre-line'>{generated.caption}</p>
@@ -167,8 +236,18 @@ export default function InstagramPage() {
                   </div>
                 </div>
 
+                {saved && (
+                  <div className='bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2'>
+                    <CheckCircle className='w-4 h-4 text-green-500' />
+                    <span className='text-sm text-green-700'>Salvo no histórico!</span>
+                  </div>
+                )}
+
                 <Button
-                  onClick={() => navigator.clipboard.writeText(generated.caption + '\n\n' + generated.hashtags.join(' '))}
+                  onClick={() => {
+                    navigator.clipboard.writeText(generated.caption + '\n\n' + generated.hashtags.join(' '))
+                    setSaved(true)
+                  }}
                   variant='outline'
                   className='w-full'
                 >
@@ -192,14 +271,17 @@ export default function InstagramPage() {
   )
 }
 
-function getCaptionByTone(tone: string): string {
-  const captions: Record<string, string> = {
-    profissional: 'Conteúdo profissional para engajar seu público.',
-    casual: 'Ei! Tudo bem? Esse post é pra você que quer algo mais leve 😊',
-    engajante: '🔥 SALVA esse post! Você não vai querer perder isso!',
-    inspirador: 'Acredite no seu potencial. Cada passo conta na sua jornada. 💪',
+// Geração local como fallback
+function generateCaption(topic: string, niche: string, tone: string): string {
+  const tones: Record<string, string> = {
+    profissional: `📊 ${topic}\n\nConteúdo profissional para engajar seu público.`,
+    casual: `Hey! 😊 ${topic}\n\nAlgo mais leve pra você que curte conteúdo de qualidade!`,
+    engajante: `🔥 SALVA! ${topic}\n\nVocê não vai querer perder isso!`,
+    inspirador: `💪 ${topic}\n\nAcredite no seu potencial. Cada passo conta.`,
   }
-  return captions[tone] || captions.profissional
+  const base = tones[tone] || tones.profissional
+  const nicheTag = niche ? `\n\n#${niche.toLowerCase().replace(/\s/g, '')}` : ''
+  return base + nicheTag
 }
 
 function generateHashtags(topic: string, niche: string): string[] {
