@@ -1,6 +1,6 @@
 "use client"
 import React from 'react'
-import { Home, Instagram, Youtube, Settings, BarChart3, Calendar } from 'lucide-react'
+import { Home, Instagram, Youtube, Settings, BarChart3, Calendar, Link2 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 
@@ -35,6 +35,12 @@ function SideNav() {
       icon: BarChart3,
       path: '/dashboard/history',
       color: 'text-green-500',
+    },
+    {
+      name: 'Conexões',
+      icon: Link2,
+      path: '/dashboard/connections',
+      color: 'text-cyan-500',
     },
     {
       name: 'Configurações',
