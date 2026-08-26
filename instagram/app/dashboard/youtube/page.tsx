@@ -1,186 +1,151 @@
 'use client'
 import React, { useState } from 'react'
-import { Youtube, Loader2, Sparkles, Play, Mic, Captions, Video, AlertCircle, CheckCircle, TrendingUp, Search, Target, ChevronRight } from 'lucide-react'
+import { Youtube, Loader2, Sparkles, Scissors, FileText, Upload, AlertCircle, ChevronRight, Zap, Music, Mic, Play, Copy, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useMutation, useAction } from 'convex/react'
+import { useAction } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 
-const videoStyles = [
-  { id: 'shorts', label: 'Shorts', icon: '📱', desc: 'Vídeo vertical até 60s' },
-  { id: 'normal', label: 'Normal', icon: '🎬', desc: 'Vídeo completo 16:9' },
-  { id: 'tutorial', label: 'Tutorial', icon: '📚', desc: 'Passo a passo educativo' },
-  { id: 'podcast', label: 'Podcast', icon: '🎙️', desc: 'Áudio com imagens' },
-]
+type AgentStep = 'idle' | 'agent1' | 'agent2' | 'agent3' | 'done'
 
-const voices = [
-  { id: 'pt-female', label: 'Feminina PT', lang: 'Português' },
-  { id: 'pt-male', label: 'Masculina PT', lang: 'Português' },
-  { id: 'en-female', label: 'Feminina EN', lang: 'Inglês' },
-  { id: 'en-male', label: 'Masculina EN', lang: 'Inglês' },
-]
+interface ClipData {
+  number: number
+  title: string
+  hook: string
+  summary: string
+  reason: string
+  targetEmotion: string
+  format: string
+  viralPotential: number
+  targetAudience: string
+  suggestedMusic: string
+  suggestedThumbnail: string
+}
 
-type PipelineStep = 'config' | 'research' | 'strategy' | 'script' | 'preview'
+interface ScriptResult {
+  narrationScript: string
+  audioDirection: {
+    musicStyle: string
+    musicVolume: string
+    voiceVolume: string
+    soundEffects: string[]
+    silenceMoments: string[]
+  }
+  visualDirection: Array<{ time: string; visual: string; transition: string; text: string }>
+  subtitles: { enabled: boolean; style: string; srtContent: string }
+  productionNotes: string
+  estimatedFinalDuration: string
+}
+
+interface SeoResult {
+  titles: { main: string; alternative1: string; alternative2: string }
+  description: string
+  tags: string[]
+  hashtags: string[]
+  chapters: Array<{ time: string; title: string }>
+  settings: { category: string; language: string; visibility: string; bestTime: string }
+  seoScore: number
+  seoExplanation: string
+}
 
 export default function YouTubePage() {
-  const [selectedStyle, setSelectedStyle] = useState('shorts')
   const [topic, setTopic] = useState('')
-  const [description, setDescription] = useState('')
-  const [voice, setVoice] = useState('pt-female')
-  const [tone, setTone] = useState('educativo')
-  const [loading, setLoading] = useState(false)
-  const [currentStep, setCurrentStep] = useState<PipelineStep>('config')
-  const [script, setScript] = useState('')
-  const [title, setTitle] = useState('')
+  const [channelName, setChannelName] = useState('')
+  const [channelNiche, setChannelNiche] = useState('')
+  const [targetAudience, setTargetAudience] = useState('')
+  const [transcription, setTranscription] = useState('')
+  const [clipCount, setClipCount] = useState(3)
+  const [currentStep, setCurrentStep] = useState<AgentStep>('idle')
+  const [clips, setClips] = useState<ClipData[]>([])
+  const [selectedClip, setSelectedClip] = useState(0)
+  const [scriptResult, setScriptResult] = useState<ScriptResult | null>(null)
+  const [seoResult, setSeoResult] = useState<SeoResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
-  const [aiSource, setAiSource] = useState<'gemini' | 'local' | null>(null)
-  const [researchData, setResearchData] = useState<string>('')
-  const [strategyData, setStrategyData] = useState<string>('')
-  const [trendScore, setTrendScore] = useState<number | null>(null)
-  const [pipelineSteps, setPipelineSteps] = useState<{ step: number; label: string; done: boolean }[]>([])
+  const [loading, setLoading] = useState(false)
+  const [agentLogs, setAgentLogs] = useState<string[]>([])
 
-  const createContent = useMutation(api.contents.create)
-  const updateScriptMutation = useMutation(api.contents.updateScript)
-  const generateYouTube = useAction(api.generateContent.generateYouTubeScript)
-  const runResearch = useAction(api.aiEngine.researchTopic)
-  const runStrategy = useAction(api.aiEngine.createStrategy)
-  const runScript = useAction(api.aiEngine.generateScript)
-  const runTrendScore = useAction(api.aiEngine.calculateTrendScore)
+  const agent1 = useAction(api.youtubeAutomation.agent1_decupador)
+  const agent2 = useAction(api.youtubeAutomation.agent2_roteirista)
+  const agent3 = useAction(api.youtubeAutomation.agent3_seoUploader)
 
-  const handleGenerate = async () => {
+  const addLog = (msg: string) => setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`])
+
+  const handleFullPipeline = async () => {
     if (!topic) return
     setLoading(true)
     setError(null)
-    setSaved(false)
-    setAiSource(null)
-    setResearchData('')
-    setStrategyData('')
-    setTrendScore(null)
-
-    const steps = [
-      { step: 1, label: 'Pesquisando tema e tendências...', done: false },
-      { step: 2, label: 'Analisando oportunidades...', done: false },
-      { step: 3, label: 'Criando estratégia de conteúdo...', done: false },
-      { step: 4, label: 'Gerando roteiro otimizado...', done: false },
-      { step: 5, label: 'Calculando score de oportunidade...', done: false },
-      { step: 6, label: 'Salvando no banco de dados...', done: false },
-    ]
-    setPipelineSteps(steps)
-    setCurrentStep('research')
+    setClips([])
+    setScriptResult(null)
+    setSeoResult(null)
+    setAgentLogs([])
+    setCurrentStep('idle')
 
     try {
-      // 1. Criar conteúdo no Convex
-      const contentId = await createContent({
-        title: topic,
+      // ═══ AGENTE 1: DECUPADOR ═══
+      setCurrentStep('agent1')
+      addLog('✂️ AGENTE 1 — Analista de Cortes iniciado...')
+      addLog(`Tema: ${topic} | Clips pedidos: ${clipCount}`)
+
+      const clipResult = await agent1({
         topic,
-        platform: 'youtube',
-        contentType: selectedStyle,
-        tone,
-        voice,
-        style: selectedStyle,
-        description,
-        createdBy: 'user',
+        videoTranscription: transcription || undefined,
+        channelNiche: channelNiche || undefined,
+        channelName: channelName || undefined,
+        targetAudience: targetAudience || undefined,
+        numberOfClips: clipCount,
+        clipDuration: '30-60 segundos',
       })
 
-      // 2. Research Engine
-      setPipelineSteps(s => s.map((st, i) => i === 0 ? { ...st, done: true } : st))
-      let researchResult: Record<string, unknown> | null = null
-      try {
-        researchResult = await runResearch({
-          topic,
-          platform: 'youtube',
-          niche: description || undefined,
+      const clipData = (clipResult as Record<string, unknown>).clips as ClipData[]
+      setClips(clipData || [])
+      addLog(`✅ Agente 1 concluído! ${clipData?.length || 0} clips identificados`)
+      setSelectedClip(0)
+
+      // ═══ AGENTE 2: ROTEIRISTA ═══
+      setCurrentStep('agent2')
+      addLog('🎬 AGENTE 2 — Roteirista & Diretor Sonoro iniciado...')
+
+      const firstClip = clipData?.[0]
+      if (firstClip) {
+        addLog(`Criando roteiro para: "${firstClip.title}"`)
+
+        const scriptRes = await agent2({
+          clipData: JSON.stringify(firstClip),
+          brandName: channelName || undefined,
+          voiceStyle: 'masculina profissional',
+          musicStyle: firstClip.suggestedMusic || 'Lo-fi inspirador',
+          includeSubtitles: true,
         })
-        setResearchData(JSON.stringify(researchResult, null, 2))
-        setPipelineSteps(s => s.map((st, i) => i === 1 ? { ...st, done: true } : st))
-      } catch {
-        setPipelineSteps(s => s.map((st, i) => i === 1 ? { ...st, done: true } : st))
+
+        setScriptResult(scriptRes as ScriptResult)
+        addLog(`✅ Agente 2 concluído! Roteiro: ${(scriptRes as ScriptResult).narrationScript?.length || 0} caracteres`)
       }
 
-      // 3. Strategy Engine
-      setCurrentStep('strategy')
-      setPipelineSteps(s => s.map((st, i) => i === 2 ? { ...st, done: true } : st))
-      let strategyResult: Record<string, unknown> | null = null
-      try {
-        strategyResult = await runStrategy({
-          topic,
-          platform: 'youtube',
-          researchData: researchResult ? JSON.stringify(researchResult) : undefined,
-          brandTone: tone,
-          objective: 'educar',
-        })
-        setStrategyData(JSON.stringify(strategyResult, null, 2))
-      } catch {
-        // Continuar sem estratégia
-      }
+      // ═══ AGENTE 3: SEO UPLOADER ═══
+      setCurrentStep('agent3')
+      addLog('📤 AGENTE 3 — Publicador SEO iniciado...')
 
-      // 4. Script Engine
-      setCurrentStep('script')
-      setPipelineSteps(s => s.map((st, i) => i === 3 ? { ...st, done: true } : st))
-      let generatedTitle = topic
-      let generatedScript = ''
+      const scriptData = scriptResult || (await agent2({
+        clipData: JSON.stringify(firstClip || { title: topic, hook: topic, summary: topic }),
+        brandName: channelName || undefined,
+      }) as ScriptResult)
 
-      try {
-        const result = await runScript({
-          topic,
-          platform: 'youtube',
-          strategy: strategyResult ? JSON.stringify(strategyResult) : undefined,
-          style: tone,
-          voice,
-          duration: selectedStyle === 'shorts' ? '30s' : '3min',
-        })
-        generatedTitle = result.title
-        generatedScript = result.script
-        setAiSource('gemini')
-      } catch {
-        try {
-          const result = await generateYouTube({
-            topic,
-            style: selectedStyle,
-            voice,
-          })
-          generatedTitle = result.title
-          generatedScript = result.script
-          setAiSource('gemini')
-        } catch {
-          generatedScript = generateLocalScript(topic, description, selectedStyle)
-          setAiSource('local')
-          setError('Gemini indisponível. Roteiro gerado localmente.')
-        }
-      }
-
-      setTitle(generatedTitle)
-      setScript(generatedScript)
-
-      // 5. Trend Score
-      setPipelineSteps(s => s.map((st, i) => i === 4 ? { ...st, done: true } : st))
-      try {
-        const score = await runTrendScore({ topic, platform: 'youtube' })
-        setTrendScore(score.totalScore)
-      } catch {
-        // Sem score não é crítico
-      }
-
-      // 6. Salvar no Convex
-      setPipelineSteps(s => s.map((st, i) => i === 5 ? { ...st, done: true } : st))
-      await updateScriptMutation({
-        contentId,
-        script: generatedScript,
-        hook: `Olá! Hoje vou te mostrar ${topic}. Fica até o final porque tem dica boa!`,
-        title: generatedTitle,
-        description: `Neste vídeo, você vai aprender sobre ${topic}. ${description || ''}`,
+      const seoRes = await agent3({
+        title: firstClip?.title || topic,
+        narrationScript: scriptData.narrationScript || topic,
+        channelNiche: channelNiche || undefined,
+        targetKeywords: [topic, channelNiche, 'shorts'].filter(Boolean),
       })
 
-      setSaved(true)
-      setCurrentStep('preview')
+      setSeoResult(seoRes as SeoResult)
+      addLog(`✅ Agente 3 concluído! SEO Score: ${(seoRes as SeoResult).seoScore || 0}`)
+      addLog('🎉 PIPELINE COMPLETO! Vídeo pronto para publicação.')
+
+      setCurrentStep('done')
     } catch (err) {
-      const generatedScript = generateLocalScript(topic, description, selectedStyle)
-      setScript(generatedScript)
-      setTitle(topic)
-      setAiSource('local')
-      setCurrentStep('preview')
+      addLog(`❌ Erro: ${err}`)
+      setError(`Erro no pipeline: ${err}`)
     } finally {
       setLoading(false)
     }
@@ -194,316 +159,266 @@ export default function YouTubePage() {
           <Youtube className='w-6 h-6 text-white' />
         </div>
         <div>
-          <h1 className='text-2xl font-bold text-gray-900'>YouTube Studio</h1>
-          <p className='text-gray-500 text-sm'>Pesquise, strategize e gere vídeos completos com IA</p>
+          <h1 className='text-2xl font-bold text-gray-900'>YouTube Automation</h1>
+          <p className='text-gray-500 text-sm'>3 Agentes Gemini: Decupagem → Roteiro → SEO/Publicação</p>
         </div>
       </div>
 
       {/* Pipeline Visual */}
-      {pipelineSteps.length > 0 && (
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6'>
-          <div className='flex items-center gap-2 overflow-x-auto pb-2'>
-            {pipelineSteps.map((step, i) => (
-              <React.Fragment key={i}>
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
-                  step.done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6'>
+        <div className='flex items-center gap-3 overflow-x-auto pb-2'>
+          {[
+            { step: 'agent1', label: 'Decupagem', icon: <Scissors className='w-4 h-4' />, color: 'blue' },
+            { step: 'agent2', label: 'Roteiro & Narração', icon: <Mic className='w-4 h-4' />, color: 'purple' },
+            { step: 'agent3', label: 'SEO & Publicação', icon: <Upload className='w-4 h-4' />, color: 'green' },
+          ].map((s, i) => {
+            const stepOrder = ['agent1', 'agent2', 'agent3', 'done']
+            const currentIdx = stepOrder.indexOf(currentStep)
+            const isActive = currentStep === s.step
+            const isDone = currentIdx > i
+            return (
+              <React.Fragment key={s.step}>
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
+                  isActive ? `bg-${s.color}-100 text-${s.color}-700 ring-2 ring-${s.color}-300` :
+                  isDone ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                 }`}>
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-                    step.done ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] ${
+                    isActive ? `bg-${s.color}-500 text-white animate-pulse` :
+                    isDone ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'
                   }`}>
-                    {step.done ? '✓' : step.step}
+                    {isDone ? '✓' : s.icon}
                   </div>
-                  {step.label}
+                  {s.label}
                 </div>
-                {i < pipelineSteps.length - 1 && <ChevronRight className='w-4 h-4 text-gray-300 shrink-0' />}
+                {i < 2 && <ChevronRight className='w-4 h-4 text-gray-300 shrink-0' />}
               </React.Fragment>
-            ))}
-          </div>
+            )
+          })}
         </div>
-      )}
+      </div>
 
       <div className='grid lg:grid-cols-3 gap-6'>
-        {/* Form */}
-        <div className='lg:col-span-2 space-y-6'>
-          {/* Video Style */}
+        {/* Config + Logs */}
+        <div className='space-y-6'>
           <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-            <h3 className='font-bold text-gray-900 mb-4'>Estilo do Vídeo</h3>
-            <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-              {videoStyles.map(style => (
-                <button
-                  key={style.id}
-                  onClick={() => setSelectedStyle(style.id)}
-                  className={`p-4 rounded-xl border-2 transition text-left
-                    ${selectedStyle === style.id
-                      ? 'border-red-500 bg-red-50'
-                      : 'border-gray-100 hover:border-gray-200'
-                    }`}
-                >
-                  <span className='text-2xl'>{style.icon}</span>
-                  <p className='font-medium text-sm mt-2'>{style.label}</p>
-                  <p className='text-xs text-gray-500 mt-0.5'>{style.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Content Settings */}
-          <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-            <h3 className='font-bold text-gray-900 mb-4'>Configurações</h3>
-            <div className='space-y-4'>
+            <h3 className='font-bold text-gray-900 mb-4 flex items-center gap-2'>
+              <Youtube className='w-5 h-5 text-red-500' /> Configuração
+            </h3>
+            <div className='space-y-3'>
               <div>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>Título / Tema</label>
-                <Input
-                  placeholder='Ex: 5 ferramentas de IA que vão mudar seu trabalho'
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                />
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Tema / Assunto do Vídeo</label>
+                <Input placeholder='Ex: 5 IA que vão mudar o mundo' value={topic} onChange={e => setTopic(e.target.value)} />
               </div>
-
               <div>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>Descrição adicional</label>
-                <Textarea
-                  placeholder='Detalhes sobre o conteúdo do vídeo...'
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                />
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Nome do Canal</label>
+                <Input placeholder='Ex: Tech Brasil' value={channelName} onChange={e => setChannelName(e.target.value)} />
               </div>
-
               <div>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>Tom de Voz</label>
-                <div className='flex flex-wrap gap-2'>
-                  {['educativo', 'entretenimento', 'storytelling', 'tutorial', 'inspirador'].map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setTone(t)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition capitalize
-                        ${tone === t
-                          ? 'bg-red-500 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Nicho</label>
+                <Input placeholder='Ex: Tecnologia, Educação' value={channelNiche} onChange={e => setChannelNiche(e.target.value)} />
               </div>
-
               <div>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>Voz / Narração</label>
-                <div className='grid grid-cols-2 gap-2'>
-                  {voices.map(v => (
-                    <button
-                      key={v.id}
-                      onClick={() => setVoice(v.id)}
-                      className={`p-3 rounded-xl border-2 transition text-left flex items-center gap-3
-                        ${voice === v.id
-                          ? 'border-red-500 bg-red-50'
-                          : 'border-gray-100 hover:border-gray-200'
-                        }`}
-                    >
-                      <Mic className={`w-5 h-5 ${voice === v.id ? 'text-red-500' : 'text-gray-400'}`} />
-                      <div>
-                        <p className='font-medium text-sm'>{v.label}</p>
-                        <p className='text-xs text-gray-500'>{v.lang}</p>
-                      </div>
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Público-alvo</label>
+                <Input placeholder='Ex: Jovens 18-30 anos' value={targetAudience} onChange={e => setTargetAudience(e.target.value)} />
+              </div>
+              <div>
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Transcrição (opcional)</label>
+                <Textarea placeholder='Cole a transcrição de um vídeo longo para o Agente 1 analisar e cortar...' value={transcription} onChange={e => setTranscription(e.target.value)} rows={3} />
+              </div>
+              <div>
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Quantidade de Clips</label>
+                <div className='flex gap-2'>
+                  {[2, 3, 5].map(n => (
+                    <button key={n} onClick={() => setClipCount(n)} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${clipCount === n ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                      {n} clips
                     </button>
                   ))}
                 </div>
               </div>
 
               {error && (
-                <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center gap-2'>
-                  <AlertCircle className='w-4 h-4 text-yellow-500' />
-                  <span className='text-sm text-yellow-700'>{error}</span>
+                <div className='bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2'>
+                  <AlertCircle className='w-4 h-4 text-red-500 shrink-0' />
+                  <span className='text-xs text-red-700'>{error}</span>
                 </div>
               )}
 
-              <Button
-                onClick={handleGenerate}
-                disabled={!topic || loading}
-                className='w-full bg-gradient-to-r from-red-500 to-red-700 hover:from-red-600 hover:to-red-800 text-white py-6 text-lg'
-              >
-                {loading ? (
-                  <><Loader2 className='w-5 h-5 animate-spin mr-2' /> Processando pipeline completo...</>
-                ) : (
-                  <><Sparkles className='w-5 h-5 mr-2' /> Iniciar Pipeline de Conteúdo</>
-                )}
+              <Button onClick={handleFullPipeline} disabled={!topic || loading} className='w-full bg-gradient-to-r from-red-500 to-red-700 hover:from-red-600 hover:to-red-800 text-white py-5'>
+                {loading ? (<><Loader2 className='w-5 h-5 animate-spin mr-2' /> Executando pipeline...</>) : (<><Zap className='w-5 h-5 mr-2' /> Executar 3 Agentes Gemini</>)}
               </Button>
             </div>
           </div>
 
-          {/* Research Results */}
-          {researchData && (
+          {agentLogs.length > 0 && (
             <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-              <div className='flex items-center gap-2 mb-4'>
-                <Search className='w-5 h-5 text-blue-500' />
-                <h3 className='font-bold text-gray-900'>Resultado da Pesquisa</h3>
-              </div>
-              <div className='bg-blue-50 rounded-xl p-4 max-h-60 overflow-y-auto'>
-                <pre className='text-xs text-gray-700 whitespace-pre-wrap font-mono'>{researchData}</pre>
-              </div>
-            </div>
-          )}
-
-          {/* Strategy Results */}
-          {strategyData && (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-              <div className='flex items-center gap-2 mb-4'>
-                <Target className='w-5 h-5 text-purple-500' />
-                <h3 className='font-bold text-gray-900'>Estratégia de Conteúdo</h3>
-              </div>
-              <div className='bg-purple-50 rounded-xl p-4 max-h-60 overflow-y-auto'>
-                <pre className='text-xs text-gray-700 whitespace-pre-wrap font-mono'>{strategyData}</pre>
+              <h3 className='font-bold text-gray-900 mb-3 text-sm'>📋 Logs dos Agentes</h3>
+              <div className='bg-gray-900 rounded-xl p-4 max-h-60 overflow-y-auto'>
+                {agentLogs.map((log, i) => (<p key={i} className='text-xs text-green-400 font-mono mb-1'>{log}</p>))}
               </div>
             </div>
           )}
         </div>
 
-        {/* Preview */}
-        <div className='space-y-6'>
-          <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sticky top-6'>
-            <h3 className='font-bold text-gray-900 mb-4'>Pré-visualização</h3>
-
-            {/* Trend Score */}
-            {trendScore !== null && (
-              <div className={`mb-4 p-4 rounded-xl text-center ${
-                trendScore >= 70 ? 'bg-green-50 border border-green-200' :
-                trendScore >= 40 ? 'bg-yellow-50 border border-yellow-200' :
-                'bg-red-50 border border-red-200'
-              }`}>
-                <p className='text-xs text-gray-500 mb-1'>Score de Oportunidade</p>
-                <p className={`text-3xl font-bold ${
-                  trendScore >= 70 ? 'text-green-600' :
-                  trendScore >= 40 ? 'text-yellow-600' : 'text-red-600'
-                }`}>{trendScore}</p>
-                <p className='text-xs text-gray-500 mt-1'>
-                  {trendScore >= 70 ? 'Excelente oportunidade!' :
-                   trendScore >= 40 ? 'Oportunidade moderada' : 'Considere outro ângulo'}
-                </p>
+        {/* Results */}
+        <div className='lg:col-span-2 space-y-6'>
+          {/* Clips from Agent 1 */}
+          {clips.length > 0 && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+              <div className='flex items-center gap-2 mb-4'>
+                <div className='w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center'><Scissors className='w-4 h-4 text-blue-600' /></div>
+                <div>
+                  <h3 className='font-bold text-gray-900 text-sm'>Agente 1 — Clips Identificados</h3>
+                  <p className='text-xs text-gray-500'>{clips.length} oportunidades de viralização</p>
+                </div>
               </div>
-            )}
-
-            {script ? (
-              <div className='space-y-4'>
-                {/* Fonte da IA */}
-                {aiSource && (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium w-fit ${
-                    aiSource === 'gemini'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-yellow-100 text-yellow-700'
-                  }`}>
-                    {aiSource === 'gemini' ? '✨ Gerado por Gemini IA' : '📝 Geração local'}
-                  </div>
-                )}
-
-                {/* YouTube Mock */}
-                <div className='border rounded-xl overflow-hidden'>
-                  <div className='aspect-video bg-gradient-to-br from-red-100 to-gray-100 flex items-center justify-center relative'>
-                    <Play className='w-16 h-16 text-red-500 opacity-80' />
-                    <div className='absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded'>
-                      {selectedStyle === 'shorts' ? '0:45' : '5:30'}
+              <div className='grid grid-cols-1 md:grid-cols-3 gap-3'>
+                {clips.map((clip, i) => (
+                  <div key={i} className={`p-4 rounded-xl border-2 transition cursor-pointer ${selectedClip === i ? 'border-red-500 bg-red-50' : 'border-gray-100 hover:border-gray-200'}`} onClick={() => setSelectedClip(i)}>
+                    <div className='flex items-center justify-between mb-2'>
+                      <span className='text-xs font-bold text-gray-400'>#{clip.number || i + 1}</span>
+                      <span className={`text-xs font-bold ${clip.viralPotential >= 7 ? 'text-green-600' : clip.viralPotential >= 4 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {clip.viralPotential}/10
+                      </span>
+                    </div>
+                    <p className='font-semibold text-sm mb-1 line-clamp-2'>{clip.title}</p>
+                    <p className='text-xs text-gray-600 mb-2 line-clamp-2'>{clip.hook}</p>
+                    <div className='flex items-center gap-2 text-[10px] text-gray-400'>
+                      <span>🎵 {clip.suggestedMusic || 'Lo-fi'}</span>
+                      <span>🎯 {clip.targetEmotion}</span>
                     </div>
                   </div>
-                  <div className='p-3'>
-                    <p className='font-semibold text-sm'>{title || topic}</p>
-                    <p className='text-xs text-gray-500 mt-1'>Altomatico • Agora</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Script from Agent 2 */}
+          {scriptResult && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+              <div className='flex items-center gap-2 mb-4'>
+                <div className='w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center'><Mic className='w-4 h-4 text-purple-600' /></div>
+                <div>
+                  <h3 className='font-bold text-gray-900 text-sm'>Agente 2 — Roteiro & Direção Sonora</h3>
+                  <p className='text-xs text-gray-500'>Duração estimada: {scriptResult.estimatedFinalDuration}</p>
+                </div>
+              </div>
+
+              {/* YouTube Mock */}
+              <div className='border rounded-xl overflow-hidden mb-4'>
+                <div className='aspect-video bg-gradient-to-br from-red-100 to-gray-100 flex items-center justify-center relative'>
+                  <Play className='w-16 h-16 text-red-500 opacity-80' />
+                  <div className='absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded'>{scriptResult.estimatedFinalDuration}</div>
+                </div>
+                <div className='p-3'>
+                  <p className='font-semibold text-sm'>{clips[selectedClip]?.title || topic}</p>
+                  <p className='text-xs text-gray-500 mt-1'>{channelName || 'Canal'} • {scriptResult.audioDirection?.musicStyle}</p>
+                </div>
+              </div>
+
+              <div className='grid grid-cols-2 gap-4 mb-4'>
+                <div className='bg-blue-50 rounded-xl p-3'>
+                  <p className='text-xs font-bold text-blue-700 mb-1'>🎵 Direção de Áudio</p>
+                  <p className='text-xs text-blue-600'>Música: {scriptResult.audioDirection?.musicStyle}</p>
+                  <p className='text-xs text-blue-600'>Volume: Voz {scriptResult.audioDirection?.voiceVolume} | Música {scriptResult.audioDirection?.musicVolume}</p>
+                </div>
+                <div className='bg-purple-50 rounded-xl p-3'>
+                  <p className='text-xs font-bold text-purple-700 mb-1'>👁️ Direção Visual</p>
+                  {scriptResult.visualDirection?.slice(0, 2).map((v, i) => (
+                    <p key={i} className='text-xs text-purple-600'>{v.time}: {v.visual}</p>
+                  ))}
+                </div>
+              </div>
+
+              <div className='bg-gray-50 rounded-xl p-4 mb-4'>
+                <p className='text-xs font-bold text-gray-500 mb-2'>NARRAÇÃO COMPLETA</p>
+                <p className='text-sm text-gray-700 whitespace-pre-line max-h-40 overflow-y-auto font-mono'>{scriptResult.narrationScript}</p>
+              </div>
+            </div>
+          )}
+
+          {/* SEO from Agent 3 */}
+          {seoResult && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+              <div className='flex items-center gap-2 mb-4'>
+                <div className='w-8 h-8 bg-green-100 rounded-full flex items-center justify-center'><Upload className='w-4 h-4 text-green-600' /></div>
+                <div>
+                  <h3 className='font-bold text-gray-900 text-sm'>Agente 3 — SEO & Metadados</h3>
+                  <p className='text-xs text-gray-500'>SEO Score: {seoResult.seoScore}/100</p>
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-xl mb-4 ${seoResult.seoScore >= 70 ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+                <div className='flex items-center justify-between'>
+                  <p className={`text-2xl font-bold ${seoResult.seoScore >= 70 ? 'text-green-600' : 'text-yellow-600'}`}>{seoResult.seoScore}</p>
+                  <p className='text-xs text-gray-600 max-w-xs'>{seoResult.seoExplanation}</p>
+                </div>
+              </div>
+
+              <div className='space-y-3'>
+                <div className='bg-gray-50 rounded-xl p-3'>
+                  <p className='text-xs font-bold text-gray-500 mb-1'>TÍTULOS (Teste A/B)</p>
+                  <p className='text-sm font-semibold text-gray-900'>Principal: {seoResult.titles?.main}</p>
+                  <p className='text-xs text-gray-600'>Alt 1: {seoResult.titles?.alternative1}</p>
+                  <p className='text-xs text-gray-600'>Alt 2: {seoResult.titles?.alternative2}</p>
+                </div>
+
+                <div className='bg-gray-50 rounded-xl p-3'>
+                  <p className='text-xs font-bold text-gray-500 mb-1'>DESCRIÇÃO</p>
+                  <p className='text-xs text-gray-700 whitespace-pre-line max-h-32 overflow-y-auto'>{seoResult.description}</p>
+                </div>
+
+                <div className='bg-gray-50 rounded-xl p-3'>
+                  <p className='text-xs font-bold text-gray-500 mb-2'>TAGS ({seoResult.tags?.length || 0})</p>
+                  <div className='flex flex-wrap gap-1'>
+                    {seoResult.tags?.map((tag, i) => (<span key={i} className='px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px]'>{tag}</span>))}
                   </div>
                 </div>
 
-                <div className='bg-gray-50 rounded-xl p-4'>
-                  <p className='text-xs font-medium text-gray-500 mb-2'>ROTEIRO COMPLETO</p>
-                  <p className='text-sm text-gray-700 whitespace-pre-line max-h-60 overflow-y-auto'>{script}</p>
-                </div>
-
-                {saved && (
-                  <div className='bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2'>
-                    <CheckCircle className='w-4 h-4 text-green-500' />
-                    <span className='text-sm text-green-700'>Salvo no banco de dados!</span>
+                {seoResult.chapters && seoResult.chapters.length > 0 && (
+                  <div className='bg-gray-50 rounded-xl p-3'>
+                    <p className='text-xs font-bold text-gray-500 mb-2'>CAPÍTULOS</p>
+                    {seoResult.chapters.map((ch, i) => (
+                      <p key={i} className='text-xs text-gray-700'><span className='font-mono text-red-500'>{ch.time}</span> {ch.title}</p>
+                    ))}
                   </div>
                 )}
+              </div>
 
-                <Button className='w-full bg-gradient-to-r from-red-500 to-red-700 text-white'>
-                  <Youtube className='w-4 h-4 mr-2' /> Publicar no YouTube
-                </Button>
+              <Button className='w-full bg-gradient-to-r from-red-500 to-red-700 text-white mt-4'>
+                <Youtube className='w-4 h-4 mr-2' /> Publicar no YouTube
+              </Button>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {currentStep === 'idle' && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center'>
+              <Zap className='w-16 h-16 mx-auto mb-4 text-red-300' />
+              <h3 className='text-lg font-bold text-gray-900 mb-2'>Pipeline de 3 Agentes YouTube</h3>
+              <p className='text-sm text-gray-500 mb-6 max-w-md mx-auto'>
+                Configure o tema e clique em Executar. Os 3 agentes Gemini vão trabalhar em sequência:
+              </p>
+              <div className='grid grid-cols-3 gap-4 max-w-lg mx-auto'>
+                <div className='p-3 bg-blue-50 rounded-xl'>
+                  <p className='text-2xl mb-1'>✂️</p>
+                  <p className='text-xs font-bold text-blue-700'>Decupador</p>
+                  <p className='text-[10px] text-blue-500'>Corta e analisa</p>
+                </div>
+                <div className='p-3 bg-purple-50 rounded-xl'>
+                  <p className='text-2xl mb-1'>🎬</p>
+                  <p className='text-xs font-bold text-purple-700'>Roteirista</p>
+                  <p className='text-[10px] text-purple-500'>Narração + som</p>
+                </div>
+                <div className='p-3 bg-green-50 rounded-xl'>
+                  <p className='text-2xl mb-1'>📤</p>
+                  <p className='text-xs font-bold text-green-700'>SEO & Upload</p>
+                  <p className='text-[10px] text-green-500'>Metadados + API</p>
+                </div>
               </div>
-            ) : (
-              <div className='text-center py-12 text-gray-400'>
-                <Play className='w-12 h-12 mx-auto mb-3 opacity-50' />
-                <p className='text-sm'>Configure e inicie o pipeline de conteúdo</p>
-                <p className='text-xs mt-1 text-gray-300'>Pesquisa → Estratégia → Roteiro</p>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
-}
-
-function generateLocalScript(topic: string, description: string, style: string): string {
-  var isShort = style === 'shorts'
-  var duration = isShort ? '45 segundos' : '5 minutos'
-  var desc = description || ('Vou te mostrar algo incrivel sobre ' + topic + '.')
-  var cleanTopic = topic.toLowerCase().replace(/\s/g, '')
-
-  if (isShort) {
-    return [
-      '# SHORT: ' + topic,
-      '',
-      '**Duracao:** ' + duration,
-      '**Formato:** Vertical 9:16',
-      '',
-      '---',
-      '',
-      '**HOOK (0-3s)**',
-      'RED PAROU DE SCROLLAR? Isso vai mudar como voce ve ' + topic + '!',
-      '',
-      '**CONTEUDO (3-35s)**',
-      desc,
-      '',
-      'Aquilo que eu vou te mostrar agora poupa horas do seu dia.',
-      '',
-      '**CTA (35-45s)**',
-      'Salva esse video! Compartilha com aquele amigo que precisa ver isso! Segue pra mais!',
-      '',
-      '---',
-      '',
-      '**Titulo:** ' + topic,
-      '**Hashtags:** #shorts #' + cleanTopic + ' #dicas'
-    ].join('\n')
-  }
-
-  return [
-    '# ROTEIRO: ' + topic,
-    '',
-    '**Duracao:** ' + duration,
-    '**Formato:** 16:9 Horizontal',
-    '',
-    '---',
-    '',
-    '**HOOK (0-5s)**',
-    'Ola! Hoje vou te mostrar ' + topic + '. Fica ate o final porque tem uma dica que vai te surpreender!',
-    '',
-    '**ABERTURA (5-15s)**',
-    'Se voce sempre quis entender melhor sobre ' + topic + ', esse video e pra voce. Vou explicar tudo de forma clara e objetiva.',
-    '',
-    '**DESENVOLVIMENTO (15-3:30min)**',
-    desc,
-    '',
-    '1. **Primeiro ponto** - Contexto e importancia',
-    '2. **Segundo ponto** - Como aplicar na pratica',
-    '3. **Terceiro ponto** - Dicas avancadas que poucos conhecem',
-    '',
-    '**CONCLUSAO (3:30-5:00min)**',
-    'Resumindo: ' + topic + ' e essencial para quem quer resultados. Aplica essas dicas e me conta nos comentarios como foi!',
-    '',
-    'Se esse conteudo te ajudou, deixa o like, se inscreve no canal e ativa o sininho pra nao perder os proximos videos!',
-    '',
-    '---',
-    '',
-    '**Titulo sugerido:** ' + topic,
-    '**Descricao:** ' + topic + ' - Neste video explico tudo que voce precisa saber.',
-    '**Tags:** #' + cleanTopic + ' #conteudo #dicas #educacao'
-  ].join('\n')
 }
