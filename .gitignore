@@ -15,8 +15,7 @@ dist/
 build/
 .next/
 
-# Convex
-convex/_generated/
+
 
 # YouTube - MoneyPrinterTurbo
 youtube/config.toml
