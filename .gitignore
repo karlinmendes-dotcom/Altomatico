@@ -23,6 +23,10 @@ youtube/config.toml
 youtube/storage/
 youtube/.venv/
 youtube/*.log
+youtube/resource/fonts/
+youtube/resource/songs/*.mp3
+youtube/resource/songs/*.wav
+youtube/resource/videos/*.mp4
 
 # Instagram
 instagram/.next/
