@@ -186,11 +186,16 @@ export default defineSchema({
     youtubeChannelId: v.optional(v.string()),
     youtubeChannelName: v.optional(v.string()),
     youtubeConnected: v.optional(v.boolean()),
+    youtubeAccessToken: v.optional(v.string()),
+    youtubeRefreshToken: v.optional(v.string()),
+    youtubeTokenExpiry: v.optional(v.string()),
 
     // Instagram
     instagramAccountId: v.optional(v.string()),
     instagramUsername: v.optional(v.string()),
     instagramConnected: v.optional(v.boolean()),
+    instagramAccessToken: v.optional(v.string()),
+    instagramTokenExpiry: v.optional(v.string()),
 
     // Marca / Identidade
     brandName: v.optional(v.string()),
