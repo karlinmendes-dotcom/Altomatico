@@ -28,9 +28,22 @@ youtube/resource/songs/*.mp3
 youtube/resource/songs/*.wav
 youtube/resource/videos/*.mp4
 
-# Instagram
+# Instagram (código movido para raiz - manter apenas recursos)
+instagram/app/
+instagram/components/
+instagram/lib/
+instagram/utils/
 instagram/.next/
 instagram/out/
+instagram/middleware.ts
+instagram/next.config.mjs
+instagram/postcss.config.mjs
+instagram/tailwind.config.ts
+instagram/tsconfig.json
+instagram/components.json
+instagram/public/
+instagram/package.json
+instagram/package-lock.json
 
 # Sistema
 .DS_Store
