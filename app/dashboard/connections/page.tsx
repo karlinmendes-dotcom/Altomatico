@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search } from 'lucide-react'
+import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search, Settings, Save, Clock, Wand2, Link } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSearchParams } from 'next/navigation'
@@ -28,6 +28,29 @@ function removeConnection(platform: string) {
   localStorage.setItem('altomatico_connections', JSON.stringify(all))
 }
 
+// Channel config stored per platform in localStorage
+interface ChannelConfig {
+  niche: string
+  systemPrompt: string
+  mode: 'AUTO_GENERATED' | 'URL_CLIPS'
+  targetUrl: string
+  postFrequency: number
+  autoPublish: boolean
+}
+
+function getChannelConfigs(): Record<string, ChannelConfig> {
+  if (typeof window === 'undefined') return {}
+  try {
+    return JSON.parse(localStorage.getItem('altomatico_channel_configs') || '{}')
+  } catch { return {} }
+}
+
+function saveChannelConfig(platform: string, config: ChannelConfig) {
+  const all = getChannelConfigs()
+  all[platform] = config
+  localStorage.setItem('altomatico_channel_configs', JSON.stringify(all))
+}
+
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Record<string, Record<string, unknown>>>({})
   const [loading, setLoading] = useState(false)
@@ -45,6 +68,17 @@ export default function ConnectionsPage() {
   // TikTok state
   const [ttToken, setTtToken] = useState('')
   const [showTtToken, setShowTtToken] = useState(false)
+
+  // Channel config state
+  const [channelConfigs, setChannelConfigs] = useState<Record<string, ChannelConfig>>({})
+  const [editingConfig, setEditingConfig] = useState<string | null>(null) // 'youtube' | 'instagram' | 'tiktok'
+  const [configNiche, setConfigNiche] = useState('')
+  const [configPrompt, setConfigPrompt] = useState('')
+  const [configMode, setConfigMode] = useState<'AUTO_GENERATED' | 'URL_CLIPS'>('AUTO_GENERATED')
+  const [configTargetUrl, setConfigTargetUrl] = useState('')
+  const [configFrequency, setConfigFrequency] = useState(1)
+  const [configAutoPublish, setConfigAutoPublish] = useState(false)
+  const [configSaved, setConfigSaved] = useState(false)
 
   const searchParams = useSearchParams()
 
@@ -80,9 +114,10 @@ export default function ConnectionsPage() {
     }
   }, [searchParams])
 
-  // Load connections on mount
+  // Load connections and channel configs on mount
   useEffect(() => {
     setConnections(getConnections())
+    setChannelConfigs(getChannelConfigs())
   }, [])
 
   const showMsg = (msg: string, isError = false) => {
@@ -246,6 +281,37 @@ export default function ConnectionsPage() {
     showMsg('TikTok desconectado.')
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // CHANNEL CONFIG — Editar config de nicho/prompt/modo
+  // ═══════════════════════════════════════════════════════════
+  const openConfig = (platform: string) => {
+    const existing = channelConfigs[platform]
+    setEditingConfig(platform)
+    setConfigNiche(existing?.niche || '')
+    setConfigPrompt(existing?.systemPrompt || '')
+    setConfigMode(existing?.mode || 'AUTO_GENERATED')
+    setConfigTargetUrl(existing?.targetUrl || '')
+    setConfigFrequency(existing?.postFrequency || 1)
+    setConfigAutoPublish(existing?.autoPublish || false)
+    setConfigSaved(false)
+  }
+
+  const handleSaveConfig = () => {
+    if (!editingConfig) return
+    saveChannelConfig(editingConfig, {
+      niche: configNiche,
+      systemPrompt: configPrompt,
+      mode: configMode,
+      targetUrl: configTargetUrl,
+      postFrequency: configFrequency,
+      autoPublish: configAutoPublish,
+    })
+    setChannelConfigs(getChannelConfigs())
+    setConfigSaved(true)
+    showMsg(`✅ Configuração do ${editingConfig} salva!`)
+    setTimeout(() => setConfigSaved(false), 3000)
+  }
+
   const yt = connections.youtube as Record<string, string> | undefined
   const ig = connections.instagram as Record<string, unknown> | undefined
   const tt = connections.tiktok as Record<string, string> | undefined
@@ -316,6 +382,9 @@ export default function ConnectionsPage() {
               <p className='text-sm text-green-700'>📺 <strong>{yt.channelName}</strong></p>
               <p className='text-[10px] text-green-600 mt-1'>ID: {yt.channelId}</p>
             </div>
+            <Button onClick={() => openConfig('youtube')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
+              <Settings className='w-4 h-4 mr-2' /> Configurar Canal
+            </Button>
             <Button onClick={handleDisconnectYouTube} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
             </Button>
@@ -376,6 +445,9 @@ export default function ConnectionsPage() {
               <p className='text-sm text-green-700'>📸 <strong>@{ig.username as string}</strong></p>
               <p className='text-[11px] text-green-600'>{ig.name as string} • {ig.followers as number} seguidores • {ig.posts as number} posts</p>
             </div>
+            <Button onClick={() => openConfig('instagram')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
+              <Settings className='w-4 h-4 mr-2' /> Configurar Canal
+            </Button>
             <Button onClick={handleDisconnectInstagram} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
             </Button>
@@ -433,6 +505,9 @@ export default function ConnectionsPage() {
               <p className='text-sm text-green-700'>🎵 <strong>{(tt.displayName as string) || 'TikTok User'}</strong></p>
               {tt.openId && <p className='text-[10px] text-green-600'>ID: {tt.openId as string}</p>}
             </div>
+            <Button onClick={() => openConfig('tiktok')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
+              <Settings className='w-4 h-4 mr-2' /> Configurar Canal
+            </Button>
             <Button onClick={handleDisconnectTiktok} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
             </Button>
@@ -483,6 +558,165 @@ export default function ConnectionsPage() {
           </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════════════
+       * CONFIG PANEL — Configuração de Canal (nicho, prompt, modo, frequência)
+       * Aparece quando o usuário clica em "Configurar Canal"
+       * ═══════════════════════════════════════════════════════════════════════════════ */}
+      {editingConfig && (
+        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4'>
+          <div className='bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto'>
+            <div className='p-6'>
+              <div className='flex items-center justify-between mb-5'>
+                <div className='flex items-center gap-3'>
+                  <div className='w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center'>
+                    <Settings className='w-5 h-5 text-blue-600' />
+                  </div>
+                  <div>
+                    <h3 className='font-bold text-gray-900'>Configurar Canal</h3>
+                    <p className='text-xs text-gray-500 capitalize'>{editingConfig}</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditingConfig(null)} className='text-gray-400 hover:text-gray-600 text-xl'>✕</button>
+              </div>
+
+              {configSaved && (
+                <div className='bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center gap-2'>
+                  <CheckCircle className='w-4 h-4 text-green-600' />
+                  <span className='text-sm text-green-700 font-medium'>Configuração salva com sucesso!</span>
+                </div>
+              )}
+
+              <div className='space-y-4'>
+                {/* Nicho */}
+                <div>
+                  <label className='block text-xs font-medium text-gray-700 mb-1'>🏷️ Nicho do Canal</label>
+                  <Input
+                    placeholder='Ex: Música, Fitness, Culinária, Tecnologia...'
+                    value={configNiche}
+                    onChange={e => setConfigNiche(e.target.value)}
+                    className='text-sm'
+                  />
+                  <p className='text-[10px] text-gray-400 mt-1'>Define o nicho para geração de conteúdo mais preciso</p>
+                </div>
+
+                {/* Prompt de sistema */}
+                <div>
+                  <label className='block text-xs font-medium text-gray-700 mb-1'>📝 Instruções do Conteúdo</label>
+                  <textarea
+                    placeholder='Ex: Crie vídeos curtos sobre dicas de música brasileira. Tom: informal e divertido. Use emojis. Sempre inclua chamada para ação no final.'
+                    value={configPrompt}
+                    onChange={e => setConfigPrompt(e.target.value)}
+                    className='w-full text-sm border border-gray-200 rounded-lg p-3 min-h-[100px] resize-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none'
+                  />
+                  <p className='text-[10px] text-gray-400 mt-1'>Instruções personalizadas que a IA segue ao criar conteúdo</p>
+                </div>
+
+                {/* Modo de geração */}
+                <div>
+                  <label className='block text-xs font-medium text-gray-700 mb-2'>🎯 Modo de Geração</label>
+                  <div className='grid grid-cols-2 gap-3'>
+                    <button
+                      onClick={() => setConfigMode('AUTO_GENERATED')}
+                      className={`p-4 rounded-xl border-2 transition text-left ${
+                        configMode === 'AUTO_GENERATED'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className='flex items-center gap-2 mb-1'>
+                        <Wand2 className='w-4 h-4 text-blue-600' />
+                        <span className='text-sm font-bold text-gray-900'>Gerar por IA</span>
+                      </div>
+                      <p className='text-[10px] text-gray-500'>A IA cria o conteúdo do zero usando o prompt e nicho definidos</p>
+                    </button>
+                    <button
+                      onClick={() => setConfigMode('URL_CLIPS')}
+                      className={`p-4 rounded-xl border-2 transition text-left ${
+                        configMode === 'URL_CLIPS'
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className='flex items-center gap-2 mb-1'>
+                        <Link className='w-4 h-4 text-purple-600' />
+                        <span className='text-sm font-bold text-gray-900'>Recortar URL</span>
+                      </div>
+                      <p className='text-[10px] text-gray-500'>Corta trechos de um vídeo existente para criar conteúdo</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* URL-alvo (só aparece no modo URL_CLIPS) */}
+                {configMode === 'URL_CLIPS' && (
+                  <div>
+                    <label className='block text-xs font-medium text-gray-700 mb-1'>🔗 URL do Vídeo</label>
+                    <Input
+                      placeholder='https://youtube.com/watch?v=...'
+                      value={configTargetUrl}
+                      onChange={e => setConfigTargetUrl(e.target.value)}
+                      className='text-sm'
+                    />
+                    <p className='text-[10px] text-gray-400 mt-1'>URL do vídeo para extrair trechos</p>
+                  </div>
+                )}
+
+                {/* Frequência */}
+                <div>
+                  <label className='block text-xs font-medium text-gray-700 mb-1'>⏰ Frequência de Postagem</label>
+                  <div className='flex items-center gap-3'>
+                    <Input
+                      type='number'
+                      min={1}
+                      max={10}
+                      value={configFrequency}
+                      onChange={e => setConfigFrequency(parseInt(e.target.value) || 1)}
+                      className='text-sm w-20'
+                    />
+                    <span className='text-sm text-gray-600'>x por dia</span>
+                  </div>
+                  <p className='text-[10px] text-gray-400 mt-1'>Quantos conteúdos gerar por dia neste canal</p>
+                </div>
+
+                {/* Auto-publish */}
+                <div className='flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-200'>
+                  <div>
+                    <p className='text-sm font-bold text-gray-900'>🔒 Modo Seguro (Recomendado)</p>
+                    <p className='text-[10px] text-gray-500'>Cria como RASCUNHO/PRIVATE/UNLISTED — você publica manualmente</p>
+                  </div>
+                  <label className='relative inline-flex items-center cursor-pointer'>
+                    <input
+                      type='checkbox'
+                      checked={!configAutoPublish}
+                      onChange={e => setConfigAutoPublish(!e.target.checked)}
+                      className='sr-only peer'
+                    />
+                    <div className='w-11 h-6 bg-green-500 rounded-full peer peer-checked:bg-amber-400 transition'></div>
+                    <div className='absolute left-1 top-1 bg-white w-4 h-4 rounded-full peer-checked:translate-x-5 transition'></div>
+                  </label>
+                </div>
+
+                {/* Botões */}
+                <div className='flex gap-3 pt-2'>
+                  <Button
+                    onClick={() => setEditingConfig(null)}
+                    variant='outline'
+                    className='flex-1'
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleSaveConfig}
+                    className='flex-1 bg-blue-600 hover:bg-blue-700 text-white'
+                  >
+                    <Save className='w-4 h-4 mr-2' /> Salvar Configuração
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

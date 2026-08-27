@@ -360,6 +360,17 @@ export default defineSchema({
     tiktokOpenId: v.optional(v.string()),
     tiktokCreatorUsername: v.optional(v.string()),
     isActive: v.boolean(),
+
+    // ═══ Configurações de negócio por canal ═══
+    niche: v.optional(v.string()), // Ex: "música", "fitness", "culinária"
+    systemPrompt: v.optional(v.string()), // Instruções personalizadas de criação de conteúdo
+    mode: v.optional(v.union(v.literal("AUTO_GENERATED"), v.literal("URL_CLIPS"))), // Geração de zero ou corte de URL
+    targetUrl: v.optional(v.string()), // URL do vídeo para recortar (modo URL_CLIPS)
+    postFrequency: v.optional(v.number()), // Ex: 1 = 1x ao dia, 2 = 2x ao dia
+    autoPublish: v.optional(v.boolean()), // Padrão: false — cria como RASCUNHO/UNLISTED/PRIVATE
+    lastCronRunAt: v.optional(v.number()), // Timestamp do último cron job executado
+    contentCount: v.optional(v.number()), // Quantos conteúdos já foram gerados
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -421,4 +432,40 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_userId_status", ["userId", "status"])
     .index("by_userId_platform", ["userId", "platform"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // CRON JOBS — Registro de execuções de cron
+  // ═══════════════════════════════════════════════════════════════
+  cronJobs: defineTable({
+    connectionId: v.id("connections"),
+    userId: v.string(),
+    platform: v.union(
+      v.literal("youtube"),
+      v.literal("instagram"),
+      v.literal("tiktok")
+    ),
+    action: v.union(
+      v.literal("generate_content"),
+      v.literal("clip_from_url"),
+      v.literal("publish"),
+      v.literal("refresh_token")
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    contentId: v.optional(v.id("contentQueue")),
+    queueId: v.optional(v.id("contentQueue")),
+    result: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    scheduledAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_connectionId", ["connectionId"])
+    .index("by_status", ["status"])
+    .index("by_scheduledAt", ["scheduledAt"]),
 });

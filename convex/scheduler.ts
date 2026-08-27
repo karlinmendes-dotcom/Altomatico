@@ -1,8 +1,9 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation, action } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 // ═══════════════════════════════════════════════════════════════
-// Scheduler — Agendamento de conteúdos
+// Scheduler — Agendamento de conteúdos + Cron Diário
 // ═══════════════════════════════════════════════════════════════
 
 export const scheduleContent = mutation({
@@ -156,5 +157,145 @@ export const rejectContent = mutation({
       updatedAt: now,
     });
     return { success: true };
+  },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CRON JOB — Geração diária automática de conteúdo
+// Roda uma vez por dia para cada canal ativo com config
+// ═══════════════════════════════════════════════════════════════
+
+// ─── Action: Processar cron para um canal ─────────────────────
+export const processChannelCron = action({
+  args: {
+    connectionId: v.id("connections"),
+  },
+  handler: async (ctx, args) => {
+    // Buscar a conexão
+    const connRaw = await ctx.runQuery("channelConfig:getChannelConfig" as never, {
+      connectionId: args.connectionId,
+    } as never);
+    if (!connRaw) throw new Error("Conexão não encontrada");
+    const conn = connRaw as unknown as {
+      platform: string;
+      niche: string;
+      systemPrompt: string;
+      mode: string;
+      targetUrl: string;
+    };
+    if (!conn.niche) throw new Error("Canal sem nicho configurado");
+
+    const { platform, niche, systemPrompt, mode, targetUrl } = conn;
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY não configurada");
+
+    const prompt = `Você é um criador de conteúdo profissional para ${platform}.
+
+Nicho: ${niche}
+${systemPrompt ? `Instruções personalizadas: ${systemPrompt}` : ""}
+
+Gere um roteiro curto para um post ${platform === "youtube" ? "YouTube" : platform === "instagram" ? "Instagram" : "TikTok"}:
+
+1. Título chamativo (máx 60 caracteres)
+2. Roteiro cena a cena (máx 30 segundos)
+3. Legenda com hashtags (8-12 tags relevantes ao nicho)
+4. Conceito visual (descrição do que aparece na tela)
+5. Melhor horário para postar
+
+Responda EXATAMENTE neste formato JSON (sem markdown):
+{
+  "title": "título do post",
+  "script": "roteiro completo",
+  "caption": "legenda com emojis e quebras de linha",
+  "hashtags": ["#tag1", "#tag2", ...],
+  "visualConcept": "descrição visual",
+  "bestTime": "horário sugerido",
+  "hook": "gancho dos primeiros 3 segundos",
+  "duration": "duração sugerida"
+}`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 2048 },
+        }),
+      }
+    );
+
+    if (!response.ok) throw new Error("Erro na API Gemini");
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    let generated: Record<string, unknown>;
+    try {
+      generated = JSON.parse(cleaned);
+    } catch {
+      generated = { title: "Conteúdo automático", script: text, caption: "", hashtags: [], visualConcept: "", bestTime: "12:00", hook: "", duration: "30s" };
+    }
+
+    // Criar item na fila como DRAFT (nunca publicado automaticamente)
+    const now = Date.now();
+    const contentType = platform === "youtube" ? "long_video" as const : platform === "instagram" ? "reel" as const : "short" as const;
+    const queueId = await ctx.runMutation("contentQueue:create" as never, {
+      userId: "default",
+      title: (generated.title as string) || "Conteúdo automático",
+      description: (generated.script as string) || "",
+      platform: platform as "youtube" | "instagram" | "tiktok",
+      contentType,
+      source: mode === "URL_CLIPS" ? "youtube_cut" as const : "ai_generated" as const,
+      aiPrompt: systemPrompt || `Nicho: ${niche}`,
+      aiScript: (generated.script as string) || "",
+      aiHashtags: (generated.hashtags as string[]) || [],
+      status: "draft", // SEMPRE como rascunho
+      retryCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+
+    // Atualizar último run do cron
+    await ctx.runMutation("channelConfig:markCronRun" as never, {
+      connectionId: args.connectionId,
+    } as never);
+
+    // Log
+    await ctx.runMutation("logs:create" as never, {
+      action: "cron_content_generated",
+      details: `Canal ${platform}#${args.connectionId} — Conteúdo gerado: ${(generated.title as string) || "Sem título"}`,
+      level: "info",
+      source: "scheduler_cron",
+      success: true,
+      timestamp: new Date().toISOString(),
+    } as never);
+
+    return {
+      success: true,
+      queueId,
+      title: generated.title,
+      mode,
+      note: "Conteúdo criado como RASCUNHO. Nada foi publicado automaticamente.",
+    };
+  },
+});
+
+// ─── Internal Mutation: Criar log ────────────────────────────
+export const _createLog = internalMutation({
+  args: {
+    action: v.string(),
+    details: v.optional(v.string()),
+    level: v.union(v.literal("info"), v.literal("warning"), v.literal("error")),
+    source: v.string(),
+    success: v.boolean(),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("logs", {
+      ...args,
+      timestamp: new Date().toISOString(),
+    });
   },
 });

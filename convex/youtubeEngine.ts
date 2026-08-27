@@ -62,6 +62,10 @@ export const uploadVideo = action({
     // Por agora, permitir o upload e deixar a validação para a API do YouTube
 
     // Preparar metadata do vídeo
+    // REGRAS DE NEGÓCIO: Forçar private ou unlisted — NUNCA public automaticamente
+    const safePrivacy: "private" | "unlisted" = 
+      args.privacyStatus === "public" ? "unlisted" : (args.privacyStatus || "private") as "private" | "unlisted";
+    
     const videoMetadata: Record<string, unknown> = {
       snippet: {
         title: args.title.slice(0, 100),
@@ -72,7 +76,7 @@ export const uploadVideo = action({
         defaultAudioLanguage: "pt-BR",
       },
       status: {
-        privacyStatus: args.privacyStatus || "private",
+        privacyStatus: safePrivacy, // FORÇADO: private ou unlisted
         selfDeclaredMadeForKids: false,
         embeddable: true,
         publicStatsViewable: true,
@@ -80,10 +84,12 @@ export const uploadVideo = action({
     };
 
     // Se agendar, adicionar data
-    if (args.scheduledAt && args.privacyStatus === "private") {
-      (videoMetadata.status as Record<string, unknown>).privacyStatus = "private";
+    if (args.scheduledAt) {
       (videoMetadata.status as Record<string, unknown>).publishAt = args.scheduledAt;
     }
+
+    // NOTA: O vídeo NUNCA é publicado como público automaticamente.
+    // O conteúdo fica PRIVATE ou UNLISTED até o usuário revisar e publicar manualmente.
 
     // Registrar tarefa de upload via mutation interna
     await ctx.runMutation(internal.youtubeEngine._registerUploadTask, {

@@ -160,11 +160,14 @@ export const publishVideo = action({
     }
     if (!accessToken) throw new Error("Token TikTok inválido ou expirado");
 
+    // REGRAS DE NEGÓCIO: Forçar SELF_ONLY (privado) — NUNCA público automaticamente
+    const safePrivacy = args.privacyLevel === "PUBLIC_TO_EVERYONE" ? "SELF_ONLY" : (args.privacyLevel || "SELF_ONLY");
+
     const initResponse = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        post_info: { title: args.title, description: args.description || args.title, privacy_level: args.privacyLevel || "PUBLIC_TO_EVERYONE" },
+        post_info: { title: args.title, description: args.description || args.title, privacy_level: safePrivacy },
         source_info: { source: "URL", video_url: args.videoUrl },
       }),
     });

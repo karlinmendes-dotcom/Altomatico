@@ -375,7 +375,7 @@ export const publishToInstagram = action({
     const token = args.accessToken;
     const igAccountId = args.instagramAccountId;
 
-    // Passo 1: Criar container de mídia
+    // Passo 1: Criar container de mídia (SEM公开发表 — não publica automaticamente)
     let containerUrl = `https://graph.facebook.com/v19.0/${igAccountId}/media`;
     const containerBody: Record<string, string> = {
       access_token: token,
@@ -396,6 +396,9 @@ export const publishToInstagram = action({
       containerBody.media_type = "REELS";
       containerBody.video_url = args.videoUrl;
     }
+
+    // NOTA: O container criado NÃO é publicado automaticamente.
+    // O conteúdo fica como RASCUNHO no Instagram até o usuário publicar manualmente.
 
     const containerRes = await fetch(containerUrl, {
       method: "POST",
