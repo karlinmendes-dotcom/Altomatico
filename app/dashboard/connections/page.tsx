@@ -37,10 +37,8 @@ export default function ConnectionsPage() {
   const disconnectYoutube = useMutation(api.youtubeEngine.disconnectYoutube)
   const saveInstagramTokens = useMutation(api.connections.saveInstagramTokens)
   const disconnectInstagram = useMutation(api.connections.disconnect)
-  const getYoutubeAuthUrl = useAction(api.youtubeEngine.getYoutubeAuthUrl)
-  const getInstagramAuthUrl = useAction(api.instagramEngine.getInstagramAuthUrl)
+  // OAuth URLs generated client-side (no Convex dependency)
   const testInstagramToken = useAction(api.instagramConnection.testInstagramToken)
-  const getTiktokAuthUrl = useAction(api.tiktokConnection.getTiktokAuthUrl)
   const testTiktokToken = useAction(api.tiktokConnection.testTiktokToken)
   const saveTiktokConnection = useAction(api.tiktokConnection.saveTiktokConnection)
   const disconnectTiktok = useMutation(api.connections.disconnect)
@@ -181,16 +179,26 @@ export default function ConnectionsPage() {
     }
   }, [settings])
 
-  // Conectar YouTube via OAuth
+  // Conectar YouTube via OAuth (gerado client-side)
   const handleConnectYouTubeOAuth = async () => {
     setLoading(true)
     setMessage(null)
     try {
+      const clientId = '66548106345-rtgn3tuap241bfjhrd4tjpfj05ch7960.apps.googleusercontent.com'
       const redirectUri = window.location.origin + '/api/youtube/callback'
-      const result = await getYoutubeAuthUrl({ redirectUri })
-      if ((result as Record<string, string>).authUrl) {
-        window.location.href = (result as Record<string, string>).authUrl
-      }
+      const scopes = [
+        'https://www.googleapis.com/auth/youtube.upload',
+        'https://www.googleapis.com/auth/youtube',
+        'https://www.googleapis.com/auth/youtube.force-ssl',
+      ].join(' ')
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${encodeURIComponent(clientId)}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&response_type=code` +
+        `&scope=${encodeURIComponent(scopes)}` +
+        `&access_type=offline` +
+        `&prompt=consent`
+      window.location.href = authUrl
     } catch (err) {
       setMessage(`Erro ao iniciar conexão YouTube: ${err}`)
     } finally {
@@ -233,16 +241,27 @@ export default function ConnectionsPage() {
     }
   }
 
-  // Conectar Instagram via OAuth
+  // Conectar Instagram via OAuth (gerado client-side)
   const handleConnectInstagramOAuth = async () => {
     setLoading(true)
     setMessage(null)
     try {
+      const appId = '1384801380503587'
       const redirectUri = window.location.origin + '/api/instagram/callback'
-      const result = await getInstagramAuthUrl({ redirectUri })
-      if ((result as Record<string, string>).authUrl) {
-        window.location.href = (result as Record<string, string>).authUrl
-      }
+      const scopes = [
+        'instagram_basic',
+        'instagram_content_publish',
+        'pages_show_list',
+        'pages_read_engagement',
+        'pages_manage_posts',
+      ].join(',')
+      const authUrl = `https://www.facebook.com/v19.0/dialog/oauth` +
+        `?client_id=${appId}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&scope=${encodeURIComponent(scopes)}` +
+        `&response_type=code` +
+        `&state=altomatico_ig`
+      window.location.href = authUrl
     } catch (err) {
       setMessage(`Erro ao iniciar conexão Instagram: ${err}`)
     } finally {
@@ -307,16 +326,22 @@ export default function ConnectionsPage() {
     }
   }
 
-  // Conectar TikTok via OAuth
+  // Conectar TikTok via OAuth (gerado client-side)
   const handleConnectTiktokOAuth = async () => {
     setLoading(true)
     setMessage(null)
     try {
+      const clientKey = 'sbaw625ahoeny0kep9'
       const redirectUri = window.location.origin + '/api/tiktok/callback'
-      const result = await getTiktokAuthUrl({ redirectUri })
-      if ((result as Record<string, string>).authUrl) {
-        window.location.href = (result as Record<string, string>).authUrl
-      }
+      const scopes = ['user.info.basic', 'video.publish'].join(',')
+      const state = Math.random().toString(36).substring(7)
+      const authUrl = `https://www.tiktok.com/v2/auth/authorize/` +
+        `?client_key=${clientKey}` +
+        `&scope=${encodeURIComponent(scopes)}` +
+        `&response_type=code` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&state=${state}`
+      window.location.href = authUrl
     } catch (err) {
       setMessage(`Erro ao iniciar conexão TikTok: ${err}`)
     } finally {
