@@ -24,6 +24,7 @@ import type * as mediaEngine from "../mediaEngine.js";
 import type * as originalityCheck from "../originalityCheck.js";
 import type * as pixabayEngine from "../pixabayEngine.js";
 import type * as policyCheck from "../policyCheck.js";
+import type * as queueActions from "../queueActions.js";
 import type * as scheduler from "../scheduler.js";
 import type * as seoEngine from "../seoEngine.js";
 import type * as settings from "../settings.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   originalityCheck: typeof originalityCheck;
   pixabayEngine: typeof pixabayEngine;
   policyCheck: typeof policyCheck;
+  queueActions: typeof queueActions;
   scheduler: typeof scheduler;
   seoEngine: typeof seoEngine;
   settings: typeof settings;

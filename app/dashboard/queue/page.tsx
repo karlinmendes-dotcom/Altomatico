@@ -1,11 +1,11 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { FileText, Edit3, Trash2, Send, Eye, Copy, CheckCircle, AlertCircle, Clock, Instagram, Youtube, Music, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { FileText, Edit3, Trash2, Send, Eye, Copy, CheckCircle, AlertCircle, Clock, Instagram, Youtube, Music, RefreshCw, ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Film, Image as ImageIcon, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 // ═══════════════════════════════════════════════════════════════
-// Queue Page — Fila de Rascunhos para Revisão
+// Queue Page — Fila de Rascunhos com Pré-visualização de Mídia
 // Visualiza, edita e envia conteúdos para redes sociais
 // ═══════════════════════════════════════════════════════════════
 
@@ -23,8 +23,17 @@ interface QueueItem {
   status: string
   videoUrl: string
   thumbnailUrl: string
+  imageUrl: string
+  mediaUrl: string
   createdAt: number
   updatedAt: number
+}
+
+interface Toast {
+  id: string
+  type: 'success' | 'error' | 'info' | 'warning'
+  message: string
+  hint?: string
 }
 
 function getQueue(): QueueItem[] {
@@ -45,6 +54,203 @@ function getConnections() {
   } catch { return {} }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Toast Component — Notificações visuais
+// ═══════════════════════════════════════════════════════════════
+
+function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
+  return (
+    <div className='fixed top-4 right-4 z-50 space-y-2 max-w-sm'>
+      {toasts.map(toast => (
+        <div
+          key={toast.id}
+          className={`p-4 rounded-xl shadow-lg border flex items-start gap-3 animate-in slide-in-from-right ${
+            toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
+            toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
+            toast.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+            'bg-blue-50 border-blue-200 text-blue-800'
+          }`}
+        >
+          <div className='shrink-0 mt-0.5'>
+            {toast.type === 'success' && <CheckCircle className='w-5 h-5 text-green-500' />}
+            {toast.type === 'error' && <AlertCircle className='w-5 h-5 text-red-500' />}
+            {toast.type === 'warning' && <AlertCircle className='w-5 h-5 text-amber-500' />}
+            {toast.type === 'info' && <CheckCircle className='w-5 h-5 text-blue-500' />}
+          </div>
+          <div className='flex-1 min-w-0'>
+            <p className='text-sm font-medium'>{toast.message}</p>
+            {toast.hint && <p className='text-xs mt-1 opacity-80'>{toast.hint}</p>}
+          </div>
+          <button onClick={() => onDismiss(toast.id)} className='shrink-0 text-gray-400 hover:text-gray-600'>
+            <X className='w-4 h-4' />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Media Preview — Player de vídeo/áudio responsivo 9:16
+// ═══════════════════════════════════════════════════════════════
+
+function MediaPreview({ item }: { item: QueueItem }) {
+  const [playing, setPlaying] = useState(false)
+  const [muted, setMuted] = useState(true)
+  const videoRef = React.useRef<HTMLVideoElement>(null)
+
+  const mediaUrl = item.mediaUrl || item.videoUrl || item.imageUrl
+
+  // Se não tem mídia, mostrar indicador de processamento
+  if (!mediaUrl) {
+    return (
+      <div className='bg-gray-50 rounded-xl border border-dashed border-gray-300 p-6 text-center'>
+        <div className='w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3'>
+          {item.aiScript ? (
+            <FileText className='w-7 h-7 text-gray-400' />
+          ) : (
+            <Loader2 className='w-7 h-7 text-gray-400 animate-spin' />
+          )}
+        </div>
+        <p className='text-sm font-medium text-gray-600'>
+          {item.aiScript ? '✅ Script pronto — Mídia não gerada ainda' : '⏳ Mídia em processamento...'}
+        </p>
+        <p className='text-xs text-gray-400 mt-1'>
+          {item.aiScript
+            ? 'O roteiro está pronto. A mídia será gerada pelo mediaEngine.'
+            : 'Aguarde a geração de conteúdo pela IA.'}
+        </p>
+      </div>
+    )
+  }
+
+  // Determinar tipo de mídia
+  const isVideo = mediaUrl.match(/\.(mp4|webm|ogg|mov)/i) || mediaUrl.includes('video') || mediaUrl.includes('pixabay.com/api/videos') || item.contentType === 'short' || item.contentType === 'reel' || item.contentType === 'long_video'
+  const isAudio = mediaUrl.match(/\.(mp3|wav|ogg|m4a)/i) || mediaUrl.includes('audio')
+  const isImage = mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)/i) || mediaUrl.includes('image') || item.contentType === 'post' || item.contentType === 'carousel'
+
+  // Player de vídeo — Formato vertical 9:16
+  if (isVideo) {
+    return (
+      <div className='relative rounded-xl overflow-hidden bg-black' style={{ aspectRatio: '9/16', maxHeight: '400px' }}>
+        <video
+          ref={videoRef}
+          src={mediaUrl}
+          className='w-full h-full object-cover'
+          muted={muted}
+          loop
+          playsInline
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onError={(e) => {
+            // Fallback: mostrar erro amigável
+            const target = e.target as HTMLVideoElement
+            target.style.display = 'none'
+          }}
+        />
+        {/* Controles overlay */}
+        <div className='absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3'>
+          <div className='flex items-center justify-between'>
+            <div className='flex items-center gap-2'>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (videoRef.current) {
+                    playing ? videoRef.current.pause() : videoRef.current.play()
+                  }
+                }}
+                className='w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition'
+              >
+                {playing ? <Pause className='w-4 h-4' /> : <Play className='w-4 h-4' />}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setMuted(!muted)
+                }}
+                className='w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition'
+              >
+                {muted ? <VolumeX className='w-4 h-4' /> : <Volume2 className='w-4 h-4' />}
+              </button>
+            </div>
+            <span className='text-white text-xs bg-black/50 px-2 py-0.5 rounded'>9:16</span>
+          </div>
+        </div>
+        {/* Badge de formato */}
+        <div className='absolute top-2 right-2'>
+          <span className='bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1'>
+            <Film className='w-3 h-3' /> Vídeo
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  // Player de áudio
+  if (isAudio) {
+    return (
+      <div className='bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-100 p-4'>
+        <div className='flex items-center gap-3 mb-3'>
+          <div className='w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center'>
+            <Music className='w-6 h-6 text-purple-500' />
+          </div>
+          <div>
+            <p className='text-sm font-bold text-gray-900'>Áudio de fundo</p>
+            <p className='text-xs text-gray-500'>Música/narração gerada</p>
+          </div>
+        </div>
+        <audio
+          src={mediaUrl}
+          className='w-full'
+          controls
+          onError={() => {/* ignore */}}
+        />
+      </div>
+    )
+  }
+
+  // Imagem — Formato vertical 9:16
+  if (isImage) {
+    return (
+      <div className='relative rounded-xl overflow-hidden bg-gray-100' style={{ aspectRatio: '9/16', maxHeight: '400px' }}>
+        <img
+          src={mediaUrl}
+          alt={item.title}
+          className='w-full h-full object-cover'
+          onError={(e) => {
+            const target = e.target as HTMLImageElement
+            target.style.display = 'none'
+          }}
+        />
+        <div className='absolute top-2 right-2'>
+          <span className='bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1'>
+            <ImageIcon className='w-3 h-3' /> Imagem
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  // Fallback: link externo
+  return (
+    <div className='bg-gray-50 rounded-xl border border-gray-200 p-4'>
+      <p className='text-xs text-gray-500 mb-2'>Mídia externa:</p>
+      <a
+        href={mediaUrl}
+        target='_blank'
+        rel='noopener noreferrer'
+        className='text-sm text-blue-600 underline break-all'
+      >
+        {mediaUrl}
+      </a>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main Queue Page
+// ═══════════════════════════════════════════════════════════════
+
 export default function QueuePage() {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [connections, setConnections] = useState<Record<string, Record<string, unknown>>>({})
@@ -54,20 +260,29 @@ export default function QueuePage() {
   const [editScript, setEditScript] = useState('')
   const [editCaption, setEditCaption] = useState('')
   const [editHashtags, setEditHashtags] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
   const [sending, setSending] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'youtube' | 'instagram' | 'tiktok'>('all')
+  const [toasts, setToasts] = useState<Toast[]>([])
 
   useEffect(() => {
     setQueue(getQueue())
     setConnections(getConnections())
   }, [])
 
-  const showMsg = (msg: string) => {
-    setMessage(msg)
-    setTimeout(() => setMessage(null), 5000)
+  // ─── Toast helpers ────────────────────────────────────────
+  const addToast = (type: Toast['type'], message: string, hint?: string) => {
+    const id = Date.now().toString() + Math.random().toString(36).slice(2)
+    setToasts(prev => [...prev, { id, type, message, hint }])
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id))
+    }, 6000)
   }
 
+  const dismissToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }
+
+  // ─── Edit handlers ────────────────────────────────────────
   const handleEdit = (item: QueueItem) => {
     setEditingId(item.id)
     setEditTitle(item.title)
@@ -91,7 +306,7 @@ export default function QueuePage() {
     saveQueue(updated)
     setQueue(updated)
     setEditingId(null)
-    showMsg('✅ Rascunho salvo!')
+    addToast('success', 'Rascunho salvo com sucesso!')
   }
 
   const handleDelete = (id: string) => {
@@ -99,31 +314,64 @@ export default function QueuePage() {
     const updated = queue.filter(item => item.id !== id)
     saveQueue(updated)
     setQueue(updated)
-    showMsg('🗑️ Rascunho excluído')
+    addToast('info', 'Rascunho excluído')
   }
 
+  // ─── Send to platform (real Convex action) ────────────────
   const handleSendToPlatform = async (item: QueueItem) => {
     const conn = connections[item.platform]
     if (!conn) {
-      showMsg(`❌ ${item.platform} não conectado. Vá em Conexões primeiro.`)
+      addToast('error', `${item.platform} não conectado`, 'Vá em Conexões e conecte sua conta primeiro.')
       return
     }
 
     setSending(item.id)
     try {
-      // Simular envio — em produção, chamaria a engine correspondente
-      // com modo seguro (DRAFT/UNLISTED/PRIVATE)
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Chamar a action Convex via API route ou fetch
+      // Em produção, isso seria ctx.runAction — aqui chamamos via endpoint
+      const res = await fetch('/api/queue/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draftId: item.id,
+          platform: item.platform,
+          title: item.title,
+          script: item.aiScript,
+          caption: item.description,
+          hashtags: item.aiHashtags,
+          videoUrl: item.videoUrl || item.mediaUrl || undefined,
+          imageUrl: item.imageUrl || undefined,
+        }),
+      })
 
-      // Atualizar status
-      const updated = queue.map(q =>
-        q.id === item.id ? { ...q, status: 'scheduled', updatedAt: Date.now() } : q
-      )
-      saveQueue(updated)
-      setQueue(updated)
-      showMsg(`✅ Rascunho enviado para ${item.platform} como NÃO LISTADO/PRIVADO`)
+      const result = await res.json()
+
+      if (result.success) {
+        // Atualizar status local
+        const updated = queue.map(q =>
+          q.id === item.id ? { ...q, status: 'scheduled', updatedAt: Date.now() } : q
+        )
+        saveQueue(updated)
+        setQueue(updated)
+
+        addToast(
+          'success',
+          result.message || `Rascunho enviado para ${item.platform} como NÃO LISTADO/PRIVADO`,
+          result.note
+        )
+      } else {
+        addToast(
+          'error',
+          result.error || `Falha ao enviar para ${item.platform}`,
+          result.hint
+        )
+      }
     } catch (err) {
-      showMsg(`❌ Erro ao enviar: ${err}`)
+      addToast(
+        'error',
+        `Erro de conexão ao enviar: ${err instanceof Error ? err.message : err}`,
+        'Verifique sua conexão e tente novamente.'
+      )
     } finally {
       setSending(null)
     }
@@ -132,12 +380,13 @@ export default function QueuePage() {
   const handleCopy = (item: QueueItem) => {
     const text = `${item.title}\n\n${item.aiScript}\n\n${item.description}\n\n${item.aiHashtags.join(' ')}`
     navigator.clipboard.writeText(text)
-    showMsg('📋 Copiado para a área de transferência!')
+    addToast('success', 'Copiado para a área de transferência!')
   }
 
   const filteredQueue = filter === 'all' ? queue : queue.filter(item => item.platform === filter)
   const draftCount = queue.filter(item => item.status === 'draft').length
   const scheduledCount = queue.filter(item => item.status === 'scheduled').length
+  const failedCount = queue.filter(item => item.status === 'failed').length
 
   const platformIcon = (p: string) => {
     if (p === 'youtube') return <Youtube className='w-4 h-4 text-red-500' />
@@ -147,6 +396,8 @@ export default function QueuePage() {
 
   return (
     <div className='min-h-screen bg-gray-50 p-4 md:p-8'>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
       {/* Header */}
       <div className='flex items-center gap-3 mb-6'>
         <div className='w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl flex items-center justify-center'>
@@ -158,20 +409,8 @@ export default function QueuePage() {
         </div>
       </div>
 
-      {/* Message */}
-      {message && (
-        <div className={`mb-4 p-3 rounded-xl flex items-center gap-2 ${
-          message.includes('✅') ? 'bg-green-50 border border-green-200 text-green-700' :
-          message.includes('📋') ? 'bg-blue-50 border border-blue-200 text-blue-700' :
-          'bg-red-50 border border-red-200 text-red-700'
-        }`}>
-          {message.includes('✅') || message.includes('📋') ? <CheckCircle className='w-4 h-4 shrink-0' /> : <AlertCircle className='w-4 h-4 shrink-0' />}
-          <span className='text-sm'>{message}</span>
-        </div>
-      )}
-
       {/* Stats */}
-      <div className='grid grid-cols-3 gap-3 mb-6'>
+      <div className='grid grid-cols-4 gap-3 mb-6'>
         <div className='bg-white rounded-xl border border-gray-100 p-4 text-center'>
           <p className='text-2xl font-bold text-amber-600'>{draftCount}</p>
           <p className='text-xs text-gray-500'>Rascunhos</p>
@@ -179,6 +418,10 @@ export default function QueuePage() {
         <div className='bg-white rounded-xl border border-gray-100 p-4 text-center'>
           <p className='text-2xl font-bold text-blue-600'>{scheduledCount}</p>
           <p className='text-xs text-gray-500'>Agendados</p>
+        </div>
+        <div className='bg-white rounded-xl border border-gray-100 p-4 text-center'>
+          <p className='text-2xl font-bold text-red-600'>{failedCount}</p>
+          <p className='text-xs text-gray-500'>Falhas</p>
         </div>
         <div className='bg-white rounded-xl border border-gray-100 p-4 text-center'>
           <p className='text-2xl font-bold text-gray-900'>{queue.length}</p>
@@ -226,9 +469,13 @@ export default function QueuePage() {
             const isExpanded = expandedId === item.id
             const isEditing = editingId === item.id
             const isConnected = !!connections[item.platform]
+            const hasMedia = !!(item.mediaUrl || item.videoUrl || item.imageUrl)
+            const hasFailed = item.status === 'failed'
 
             return (
-              <div key={item.id} className='bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden'>
+              <div key={item.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${
+                hasFailed ? 'border-red-200' : 'border-gray-100'
+              }`}>
                 {/* Header */}
                 <div
                   className='p-4 cursor-pointer hover:bg-gray-50 transition'
@@ -244,13 +491,21 @@ export default function QueuePage() {
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                             item.status === 'draft' ? 'bg-amber-100 text-amber-700' :
                             item.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
+                            item.status === 'failed' ? 'bg-red-100 text-red-700' :
                             'bg-green-100 text-green-700'
                           }`}>
-                            {item.status === 'draft' ? 'Rascunho' : item.status === 'scheduled' ? 'Agendado' : 'Enviado'}
+                            {item.status === 'draft' ? 'Rascunho' :
+                             item.status === 'scheduled' ? 'Agendado' :
+                             item.status === 'failed' ? 'Falhou' : 'Enviado'}
                           </span>
                           <span className='text-[10px] text-gray-400'>
-                            {item.source === 'ai_generated' ? '🤖 Gerado por IA' : '🔗 Clip de URL'}
+                            {item.source === 'ai_generated' ? '🤖 IA' : '🔗 Clip'}
                           </span>
+                          {hasMedia && (
+                            <span className='text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded'>
+                              📎 Mídia
+                            </span>
+                          )}
                         </div>
                         <h3 className='font-bold text-gray-900 text-sm truncate'>{item.title}</h3>
                         <p className='text-xs text-gray-500 truncate mt-0.5'>
@@ -267,6 +522,12 @@ export default function QueuePage() {
                 {/* Expanded Content */}
                 {isExpanded && (
                   <div className='border-t border-gray-100 p-4 space-y-4'>
+                    {/* ═══ MÍDIA PREVIEW ═══ */}
+                    <div>
+                      <p className='text-xs font-bold text-gray-500 mb-2'>🎬 Pré-visualização</p>
+                      <MediaPreview item={item} />
+                    </div>
+
                     {/* Hashtags */}
                     {item.aiHashtags.length > 0 && (
                       <div>
@@ -328,6 +589,14 @@ export default function QueuePage() {
                       </>
                     )}
 
+                    {/* Failed error message */}
+                    {hasFailed && (item as QueueItem & { errorMessage?: string }).errorMessage && (
+                      <div className='bg-red-50 border border-red-200 rounded-lg p-3'>
+                        <p className='text-xs font-bold text-red-700 mb-1'>❌ Erro no envio</p>
+                        <p className='text-xs text-red-600'>{(item as QueueItem & { errorMessage?: string }).errorMessage}</p>
+                      </div>
+                    )}
+
                     {/* Actions */}
                     <div className='flex flex-wrap gap-2 pt-2'>
                       {isEditing ? (
@@ -380,10 +649,11 @@ export default function QueuePage() {
                     )}
 
                     {/* Meta info */}
-                    <div className='flex items-center gap-3 text-[10px] text-gray-400 pt-1'>
-                      <span className='flex items-center gap-1'><Clock className='w-3 h-3' /> Criado: {new Date(item.createdAt).toLocaleString('pt-BR')}</span>
-                      <span>Plataforma: {item.platform}</span>
-                      <span>Tipo: {item.contentType}</span>
+                    <div className='flex flex-wrap items-center gap-3 text-[10px] text-gray-400 pt-1'>
+                      <span className='flex items-center gap-1'><Clock className='w-3 h-3' /> {new Date(item.createdAt).toLocaleString('pt-BR')}</span>
+                      <span className='capitalize'>{item.platform}</span>
+                      <span className='capitalize'>{item.contentType}</span>
+                      {hasMedia && <span className='text-green-600'>✓ Mídia pronta</span>}
                     </div>
                   </div>
                 )}
