@@ -462,6 +462,69 @@ export default function ConnectionsPage() {
           </div>
         </div>
 
+        {/* Unsplash */}
+        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+          <div className='flex items-start justify-between mb-4'>
+            <div className='flex items-center gap-3'>
+              <div className='w-12 h-12 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center'>
+                <svg className='w-6 h-6 text-white' viewBox='0 0 24 24' fill='currentColor'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/></svg>
+              </div>
+              <div>
+                <h3 className='font-bold text-gray-900'>Unsplash</h3>
+                <p className='text-xs text-gray-500'>Fotos HD gratuitas para conteúdo</p>
+              </div>
+            </div>
+            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+              <CheckCircle className='w-3.5 h-3.5' /> Configurado
+            </div>
+          </div>
+          <div className='bg-gray-50 rounded-lg p-3'>
+            <p className='text-xs text-gray-600'>Access Key configurada • 50 req/hora grátis ✅</p>
+          </div>
+        </div>
+
+        {/* Freesound */}
+        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+          <div className='flex items-start justify-between mb-4'>
+            <div className='flex items-center gap-3'>
+              <div className='w-12 h-12 bg-gradient-to-br from-red-600 to-red-800 rounded-xl flex items-center justify-center'>
+                <Music className='w-6 h-6 text-white' />
+              </div>
+              <div>
+                <h3 className='font-bold text-gray-900'>Freesound</h3>
+                <p className='text-xs text-gray-500'>Sons e efeitos sonoros gratuitos</p>
+              </div>
+            </div>
+            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+              <CheckCircle className='w-3.5 h-3.5' /> Configurado
+            </div>
+          </div>
+          <div className='bg-gray-50 rounded-lg p-3'>
+            <p className='text-xs text-gray-600'>Client ID configurado • Sons Creative Commons ✅</p>
+          </div>
+        </div>
+
+        {/* Coverr */}
+        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+          <div className='flex items-start justify-between mb-4'>
+            <div className='flex items-center gap-3'>
+              <div className='w-12 h-12 bg-gradient-to-br from-lime-400 to-lime-600 rounded-xl flex items-center justify-center'>
+                <svg className='w-6 h-6 text-white' viewBox='0 0 24 24' fill='currentColor'><path d='M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z'/></svg>
+              </div>
+              <div>
+                <h3 className='font-bold text-gray-900'>Coverr</h3>
+                <p className='text-xs text-gray-500'>Vídeos stock gratuitos HD/4K</p>
+              </div>
+            </div>
+            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+              <CheckCircle className='w-3.5 h-3.5' /> Configurado
+            </div>
+          </div>
+          <div className='bg-gray-50 rounded-lg p-3'>
+            <p className='text-xs text-gray-600'>API Key configurada • 50 req/hora (demo) ✅</p>
+          </div>
+        </div>
+
         {/* ═══ YOUTUBE ═══ */}
         <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
           <div className='flex items-start justify-between mb-4'>
@@ -688,9 +751,11 @@ export default function ConnectionsPage() {
             <h4 className='font-bold text-green-700 text-sm mb-2'>🎬 Produção</h4>
             <ul className='text-xs text-green-600 space-y-1'>
               <li>• Pixabay (vídeos + imagens)</li>
+              <li>• Unsplash (fotos HD)</li>
+              <li>• Coverr (vídeos stock)</li>
+              <li>• Freesound (sons/efeitos)</li>
               <li>• Edge TTS (narração grátis)</li>
               <li>• Legendas automáticas</li>
-              <li>• Pipeline automatizado</li>
             </ul>
           </div>
           <div className='bg-purple-50 rounded-xl p-4'>
