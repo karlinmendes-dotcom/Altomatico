@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search, Settings, Save, Clock, Wand2, Link } from 'lucide-react'
+import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search, Settings, Save, Clock, Wand2, Link, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSearchParams } from 'next/navigation'
@@ -49,6 +49,26 @@ function saveChannelConfig(platform: string, config: ChannelConfig) {
   const all = getChannelConfigs()
   all[platform] = config
   localStorage.setItem('altomatico_channel_configs', JSON.stringify(all))
+}
+
+// Token expiry detection
+function getTokenExpiryStatus(conn: Record<string, unknown>): { expired: boolean; expiringSoon: boolean; daysLeft: number } {
+  const now = Date.now()
+  // Check Instagram token
+  const igExpiry = conn.tokenExpiry || conn.expiresAt
+  if (igExpiry && typeof igExpiry === 'number') {
+    const daysLeft = Math.ceil((igExpiry - now) / (1000 * 60 * 60 * 24))
+    if (daysLeft <= 0) return { expired: true, expiringSoon: false, daysLeft: 0 }
+    if (daysLeft <= 7) return { expired: false, expiringSoon: true, daysLeft }
+  }
+  // Check TikTok token
+  const ttExpiry = conn.expiresAt
+  if (ttExpiry && typeof ttExpiry === 'number' && conn.openId) {
+    const daysLeft = Math.ceil((ttExpiry - now) / (1000 * 60 * 60 * 24))
+    if (daysLeft <= 0) return { expired: true, expiringSoon: false, daysLeft: 0 }
+    if (daysLeft <= 7) return { expired: false, expiringSoon: true, daysLeft }
+  }
+  return { expired: false, expiringSoon: false, daysLeft: 0 }
 }
 
 export default function ConnectionsPage() {
@@ -382,6 +402,36 @@ export default function ConnectionsPage() {
               <p className='text-sm text-green-700'>📺 <strong>{yt.channelName}</strong></p>
               <p className='text-[10px] text-green-600 mt-1'>ID: {yt.channelId}</p>
             </div>
+            {(() => {
+              const ytExpiry = getTokenExpiryStatus(yt as Record<string, unknown>)
+              if (ytExpiry.expired) {
+                return (
+                  <div className='bg-red-50 border border-red-200 rounded-lg p-3 mb-3 flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                      <AlertTriangle className='w-4 h-4 text-red-500' />
+                      <span className='text-xs font-medium text-red-700'>⚠️ Token Expirado — Reconecte sua conta</span>
+                    </div>
+                    <Button onClick={() => { removeConnection('youtube'); refresh(); }} size='sm' className='bg-red-500 hover:bg-red-600 text-white text-[10px]'>
+                      <RefreshCw className='w-3 h-3 mr-1' /> Reconectar
+                    </Button>
+                  </div>
+                )
+              }
+              if (ytExpiry.expiringSoon) {
+                return (
+                  <div className='bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                      <AlertTriangle className='w-4 h-4 text-amber-500' />
+                      <span className='text-xs font-medium text-amber-700'>⚠️ Expira em {ytExpiry.daysLeft} dia(s) — Renovação necessária</span>
+                    </div>
+                    <Button onClick={() => { removeConnection('youtube'); refresh(); }} size='sm' className='bg-amber-500 hover:bg-amber-600 text-white text-[10px]'>
+                      <RefreshCw className='w-3 h-3 mr-1' /> Reconectar
+                    </Button>
+                  </div>
+                )
+              }
+              return null
+            })()}
             <Button onClick={() => openConfig('youtube')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
               <Settings className='w-4 h-4 mr-2' /> Configurar Canal
             </Button>
@@ -445,6 +495,36 @@ export default function ConnectionsPage() {
               <p className='text-sm text-green-700'>📸 <strong>@{ig.username as string}</strong></p>
               <p className='text-[11px] text-green-600'>{ig.name as string} • {ig.followers as number} seguidores • {ig.posts as number} posts</p>
             </div>
+            {(() => {
+              const igExpiry = getTokenExpiryStatus(ig as Record<string, unknown>)
+              if (igExpiry.expired) {
+                return (
+                  <div className='bg-red-50 border border-red-200 rounded-lg p-3 mb-3 flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                      <AlertTriangle className='w-4 h-4 text-red-500' />
+                      <span className='text-xs font-medium text-red-700'>⚠️ Token Expirado — Reconecte sua conta</span>
+                    </div>
+                    <Button onClick={() => { removeConnection('instagram'); refresh(); }} size='sm' className='bg-red-500 hover:bg-red-600 text-white text-[10px]'>
+                      <RefreshCw className='w-3 h-3 mr-1' /> Reconectar
+                    </Button>
+                  </div>
+                )
+              }
+              if (igExpiry.expiringSoon) {
+                return (
+                  <div className='bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                      <AlertTriangle className='w-4 h-4 text-amber-500' />
+                      <span className='text-xs font-medium text-amber-700'>⚠️ Expira em {igExpiry.daysLeft} dia(s) — Renovação necessária</span>
+                    </div>
+                    <Button onClick={() => { removeConnection('instagram'); refresh(); }} size='sm' className='bg-amber-500 hover:bg-amber-600 text-white text-[10px]'>
+                      <RefreshCw className='w-3 h-3 mr-1' /> Reconectar
+                    </Button>
+                  </div>
+                )
+              }
+              return null
+            })()}
             <Button onClick={() => openConfig('instagram')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
               <Settings className='w-4 h-4 mr-2' /> Configurar Canal
             </Button>
@@ -505,6 +585,36 @@ export default function ConnectionsPage() {
               <p className='text-sm text-green-700'>🎵 <strong>{(tt.displayName as string) || 'TikTok User'}</strong></p>
               {tt.openId && <p className='text-[10px] text-green-600'>ID: {tt.openId as string}</p>}
             </div>
+            {(() => {
+              const ttExpiry = getTokenExpiryStatus(tt as Record<string, unknown>)
+              if (ttExpiry.expired) {
+                return (
+                  <div className='bg-red-50 border border-red-200 rounded-lg p-3 mb-3 flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                      <AlertTriangle className='w-4 h-4 text-red-500' />
+                      <span className='text-xs font-medium text-red-700'>⚠️ Token Expirado — Reconecte sua conta</span>
+                    </div>
+                    <Button onClick={() => { removeConnection('tiktok'); refresh(); }} size='sm' className='bg-red-500 hover:bg-red-600 text-white text-[10px]'>
+                      <RefreshCw className='w-3 h-3 mr-1' /> Reconectar
+                    </Button>
+                  </div>
+                )
+              }
+              if (ttExpiry.expiringSoon) {
+                return (
+                  <div className='bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                      <AlertTriangle className='w-4 h-4 text-amber-500' />
+                      <span className='text-xs font-medium text-amber-700'>⚠️ Expira em {ttExpiry.daysLeft} dia(s) — Renovação necessária</span>
+                    </div>
+                    <Button onClick={() => { removeConnection('tiktok'); refresh(); }} size='sm' className='bg-amber-500 hover:bg-amber-600 text-white text-[10px]'>
+                      <RefreshCw className='w-3 h-3 mr-1' /> Reconectar
+                    </Button>
+                  </div>
+                )
+              }
+              return null
+            })()}
             <Button onClick={() => openConfig('tiktok')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
               <Settings className='w-4 h-4 mr-2' /> Configurar Canal
             </Button>

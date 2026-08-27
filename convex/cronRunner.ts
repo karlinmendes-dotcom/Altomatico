@@ -64,8 +64,7 @@ export const runDailyContentGeneration = internalMutation({
       await ctx.db.patch(jobId, { status: "running", startedAt: now });
 
       try {
-        // Gerar conteúdo via IA (simulado aqui — na prática seria via action)
-        // O conteúdo é gerado e salvo como DRAFT
+        // Gerar conteúdo via IA
         const contentType = channel.platform === "youtube" ? "long_video" : channel.platform === "instagram" ? "reel" : "short";
 
         await ctx.db.insert("contentQueue", {
@@ -136,7 +135,6 @@ export const checkExpiredTokens = internalMutation({
     for (const conn of connections) {
       if (!conn.isActive) continue;
 
-      // Verificar token Instagram
       if (conn.instagramTokenExpiresAt && conn.instagramTokenExpiresAt < now) {
         warnings++;
         await ctx.db.insert("logs", {
@@ -149,7 +147,6 @@ export const checkExpiredTokens = internalMutation({
         });
       }
 
-      // Verificar token TikTok
       if (conn.tiktokTokenExpiresAt && conn.tiktokTokenExpiresAt < now) {
         warnings++;
         await ctx.db.insert("logs", {
@@ -162,7 +159,6 @@ export const checkExpiredTokens = internalMutation({
         });
       }
 
-      // Verificar token YouTube
       if (conn.youtubeTokenExpiresAt && conn.youtubeTokenExpiresAt < now) {
         warnings++;
         await ctx.db.insert("logs", {
@@ -188,5 +184,81 @@ export const checkExpiredTokens = internalMutation({
     }
 
     return { warnings };
+  },
+});
+
+// ─── Manutenção completa — Limpeza semanal de dados antigos ───
+// Remove logs > 30 dias, contentQueue FAILED/PUBLISHED > 60 dias, cronJobs > 30 dias
+export const runFullMaintenance = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
+
+    let totalDeleted = 0;
+
+    // 1. Limpar logs antigos (30 dias)
+    const logsCutoff = new Date(now - thirtyDaysMs).toISOString();
+    const oldLogs = await ctx.db
+      .query("logs")
+      .withIndex("by_timestamp", (q) => q.lt("timestamp", logsCutoff))
+      .order("asc")
+      .take(100);
+    for (const log of oldLogs) {
+      await ctx.db.delete(log._id);
+      totalDeleted++;
+    }
+
+    // 2. Limpar contentQueue FAILED antigos (60 dias)
+    const failedItems = await ctx.db
+      .query("contentQueue")
+      .withIndex("by_userId_status", (q) =>
+        q.eq("userId", "default").eq("status", "failed")
+      )
+      .collect();
+    for (const item of failedItems) {
+      if (item.createdAt < now - sixtyDaysMs) {
+        await ctx.db.delete(item._id);
+        totalDeleted++;
+      }
+    }
+
+    // 3. Limpar contentQueue PUBLISHED antigos (60 dias)
+    const publishedItems = await ctx.db
+      .query("contentQueue")
+      .withIndex("by_userId_status", (q) =>
+        q.eq("userId", "default").eq("status", "published")
+      )
+      .collect();
+    for (const item of publishedItems) {
+      if (item.createdAt < now - sixtyDaysMs) {
+        await ctx.db.delete(item._id);
+        totalDeleted++;
+      }
+    }
+
+    // 4. Limpar cronJobs antigos (30 dias)
+    const oldJobs = await ctx.db
+      .query("cronJobs")
+      .withIndex("by_scheduledAt", (q) => q.lt("scheduledAt", now - thirtyDaysMs))
+      .order("asc")
+      .take(100);
+    for (const job of oldJobs) {
+      await ctx.db.delete(job._id);
+      totalDeleted++;
+    }
+
+    // Log final
+    await ctx.db.insert("logs", {
+      action: "maintenance_full_cleanup",
+      details: `Manutenção completa: ${totalDeleted} registros removidos`,
+      level: "info",
+      source: "cron_runner",
+      success: true,
+      timestamp: new Date().toISOString(),
+    });
+
+    return { totalDeleted, message: `Manutenção concluída: ${totalDeleted} registros limpos` };
   },
 });

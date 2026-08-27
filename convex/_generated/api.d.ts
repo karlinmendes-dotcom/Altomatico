@@ -20,6 +20,7 @@ import type * as helpers from "../helpers.js";
 import type * as instagramConnection from "../instagramConnection.js";
 import type * as instagramEngine from "../instagramEngine.js";
 import type * as logs from "../logs.js";
+import type * as maintenance from "../maintenance.js";
 import type * as mediaEngine from "../mediaEngine.js";
 import type * as originalityCheck from "../originalityCheck.js";
 import type * as pixabayEngine from "../pixabayEngine.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   instagramConnection: typeof instagramConnection;
   instagramEngine: typeof instagramEngine;
   logs: typeof logs;
+  maintenance: typeof maintenance;
   mediaEngine: typeof mediaEngine;
   originalityCheck: typeof originalityCheck;
   pixabayEngine: typeof pixabayEngine;
