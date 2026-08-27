@@ -4,9 +4,12 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2, ArrowRight, Check } from "lucide-react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const register = useMutation(api.auth.register);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -31,10 +34,32 @@ export default function SignUpPage() {
       }
 
       if (password !== confirmPassword) {
-        throw new Error("As senhas não conferem");
+        throw new Error("As senhas nao conferem");
       }
 
-      // Auth simples via localStorage (uso pessoal)
+      // Tentar registro no Convex
+      try {
+        const result = await register({
+          email,
+          password,
+          displayName: name,
+        });
+        localStorage.setItem(
+          "altomatico_user",
+          JSON.stringify({
+            id: result.userId,
+            email: result.email,
+            displayName: result.displayName,
+            convexId: result.id,
+          })
+        );
+        router.push("/dashboard");
+        return;
+      } catch {
+        // Se Convex falhar, usar localStorage
+      }
+
+      // Fallback: localStorage
       const userId = `user_${email.replace(/[^a-zA-Z0-9]/g, "_")}`;
 
       localStorage.setItem(
@@ -65,7 +90,7 @@ export default function SignUpPage() {
             <span className="text-white font-bold text-2xl">Altomatico</span>
           </Link>
           <h1 className="text-3xl font-bold text-white mb-2">Crie sua conta</h1>
-          <p className="text-gray-400">Comece a gerar conteúdo automaticamente</p>
+          <p className="text-gray-400">Comece a gerar conteudo automaticamente</p>
         </div>
 
         <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
@@ -149,7 +174,7 @@ export default function SignUpPage() {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  Criar conta grátis
+                  Criar conta gratis
                   <ArrowRight className="w-5 h-5" />
                 </>
               )}
@@ -158,7 +183,7 @@ export default function SignUpPage() {
 
           <div className="mt-6 text-center">
             <p className="text-gray-400 text-sm">
-              Já tem uma conta?{" "}
+              Ja tem uma conta?{" "}
               <Link href="/sign-in" className="text-purple-400 hover:text-purple-300 font-medium transition">
                 Entrar
               </Link>
@@ -167,7 +192,7 @@ export default function SignUpPage() {
         </div>
 
         <p className="text-center text-gray-500 text-xs mt-6">
-          Plano gratuito inclui: YouTube + Instagram + TikTok
+          Uso pessoal — YouTube + Instagram + TikTok
         </p>
       </div>
     </div>

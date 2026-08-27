@@ -4,9 +4,13 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
 
 export default function SignInPage() {
   const router = useRouter();
+  const login = useMutation(api.auth.login);
+  const register = useMutation(api.auth.register);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +32,47 @@ export default function SignInPage() {
         throw new Error("A senha deve ter pelo menos 4 caracteres");
       }
 
-      // Auth simples via localStorage (uso pessoal)
+      // Tentar login no Convex
+      try {
+        const result = await login({ email, password });
+        localStorage.setItem(
+          "altomatico_user",
+          JSON.stringify({
+            id: result.userId,
+            email: result.email,
+            displayName: result.displayName,
+            convexId: result.id,
+          })
+        );
+        router.push("/dashboard");
+        return;
+      } catch (loginErr) {
+        // Se usuario nao existe, tentar criar
+        if (loginErr instanceof Error && loginErr.message.includes("não encontrado")) {
+          try {
+            const result = await register({
+              email,
+              password,
+              displayName: email.split("@")[0],
+            });
+            localStorage.setItem(
+              "altomatico_user",
+              JSON.stringify({
+                id: result.userId,
+                email: result.email,
+                displayName: result.displayName,
+                convexId: result.id,
+              })
+            );
+            router.push("/dashboard");
+            return;
+          } catch {
+            // Se registro falhar, usar localStorage
+          }
+        }
+      }
+
+      // Fallback: localStorage
       const userId = `user_${email.replace(/[^a-zA-Z0-9]/g, "_")}`;
       const displayName = email.split("@")[0];
 
@@ -123,16 +167,16 @@ export default function SignInPage() {
 
           <div className="mt-6 text-center">
             <p className="text-gray-400 text-sm">
-              Não tem uma conta?{" "}
+              Nao tem uma conta?{" "}
               <Link href="/sign-up" className="text-purple-400 hover:text-purple-300 font-medium transition">
-                Criar conta grátis
+                Criar conta gratis
               </Link>
             </p>
           </div>
         </div>
 
         <p className="text-center text-gray-500 text-xs mt-6">
-          Ao continuar, você concorda com os Termos de Uso
+          Uso pessoal — Seus dados sao protegidos
         </p>
       </div>
     </div>
