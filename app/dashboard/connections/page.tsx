@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useSearchParams } from 'next/navigation'
 
 // ═══════════════════════════════════════════════════════════
 // All connections stored in localStorage (no Convex dependency)
@@ -45,6 +46,41 @@ export default function ConnectionsPage() {
   const [ttToken, setTtToken] = useState('')
   const [showTtToken, setShowTtToken] = useState(false)
 
+  const searchParams = useSearchParams()
+
+  // Handle OAuth callback parameters from URL
+  useEffect(() => {
+    const ttConnected = searchParams.get('tiktok_connected')
+    const ttToken = searchParams.get('token')
+    const ttRefresh = searchParams.get('refresh_token')
+    const ttOpenId = searchParams.get('open_id')
+    const ttName = searchParams.get('display_name')
+    const ttExpires = searchParams.get('expires_at')
+    const ttRefreshExpires = searchParams.get('refresh_expires_at')
+    const ttError = searchParams.get('tiktok_error')
+
+    if (ttConnected === 'true' && ttToken) {
+      saveConnection('tiktok', {
+        token: ttToken,
+        refreshToken: ttRefresh || '',
+        openId: ttOpenId || '',
+        displayName: ttName || 'TikTok User',
+        expiresAt: parseInt(ttExpires || '0'),
+        refreshExpiresAt: parseInt(ttRefreshExpires || '0'),
+      })
+      setConnections(getConnections())
+      setMessage('✅ TikTok conectado via OAuth!')
+      // Clean URL
+      window.history.replaceState({}, '', '/dashboard/connections')
+    }
+
+    if (ttError) {
+      setMessage(`❌ TikTok: ${ttError}`)
+      window.history.replaceState({}, '', '/dashboard/connections')
+    }
+  }, [searchParams])
+
+  // Load connections on mount
   useEffect(() => {
     setConnections(getConnections())
   }, [])
@@ -394,7 +430,8 @@ export default function ConnectionsPage() {
         {tt ? (
           <div>
             <div className='bg-green-50 rounded-lg p-3 mb-3'>
-              <p className='text-sm text-green-700'>🎵 <strong>{tt.displayName}</strong></p>
+              <p className='text-sm text-green-700'>🎵 <strong>{(tt.displayName as string) || 'TikTok User'}</strong></p>
+              {tt.openId && <p className='text-[10px] text-green-600'>ID: {tt.openId as string}</p>}
             </div>
             <Button onClick={handleDisconnectTiktok} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
