@@ -1,167 +1,56 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, ExternalLink, Eye, EyeOff } from 'lucide-react'
+import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAction, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
-import { useSearchParams } from 'next/navigation'
 
 interface ConnectionStatus {
   youtube: { connected: boolean; channelName?: string; channelId?: string }
   instagram: { connected: boolean; username?: string; accountId?: string }
   tiktok: { connected: boolean; displayName?: string; openId?: string }
-  gemini: { configured: boolean; keyCount: number }
-  pixabay: { configured: boolean }
 }
 
 export default function ConnectionsPage() {
-  const searchParams = useSearchParams()
   const [status, setStatus] = useState<ConnectionStatus>({
     youtube: { connected: false },
     instagram: { connected: false },
     tiktok: { connected: false },
-    gemini: { configured: false, keyCount: 0 },
-    pixabay: { configured: false },
   })
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+
+  // YouTube state
+  const [ytChannelId, setYtChannelId] = useState('')
+  const [ytChannelName, setYtChannelName] = useState('')
+  const [showYtId, setShowYtId] = useState(false)
+
+  // Instagram state
+  const [igToken, setIgToken] = useState('')
   const [showIgToken, setShowIgToken] = useState(false)
-  const [igManualToken, setIgManualToken] = useState('')
-  const [igManualPageId, setIgManualPageId] = useState('')
-  const [igManualAccountId, setIgManualAccountId] = useState('')
-  const [igManualUsername, setIgManualUsername] = useState('')
+
+  // TikTok state
+  const [ttToken, setTtToken] = useState('')
+  const [showTtToken, setShowTtToken] = useState(false)
 
   const settings = useQuery(api.settings.getDefault)
   const saveYoutubeConnection = useMutation(api.youtubeEngine.saveYoutubeConnection)
   const disconnectYoutube = useMutation(api.youtubeEngine.disconnectYoutube)
   const saveInstagramTokens = useMutation(api.connections.saveInstagramTokens)
   const disconnectInstagram = useMutation(api.connections.disconnect)
-  // OAuth URLs generated client-side (no Convex dependency)
   const testInstagramToken = useAction(api.instagramConnection.testInstagramToken)
+  const saveIgConnection = useAction(api.instagramConnection.saveInstagramConnection)
   const testTiktokToken = useAction(api.tiktokConnection.testTiktokToken)
   const saveTiktokConnection = useAction(api.tiktokConnection.saveTiktokConnection)
   const disconnectTiktok = useMutation(api.connections.disconnect)
-  const [tiktokToken, setTiktokToken] = useState('')
-  const [showTtToken, setShowTtToken] = useState(false)
-  const saveIgConnection = useAction(api.instagramConnection.saveInstagramConnection)
-  const getChannelInfo = useAction(api.youtubeEngine.getChannelInfo)
   const createOrUpdate = useMutation(api.settings.createOrUpdate)
+  const getChannelInfo = useAction(api.youtubeEngine.getChannelInfo)
 
-  // Processar OAuth callbacks via URL params
-  useEffect(() => {
-    // Instagram OAuth callback
-    if (searchParams.get('instagram_connected') === 'true') {
-      const token = searchParams.get('token') || ''
-      const pageId = searchParams.get('page_id') || ''
-      const pageToken = searchParams.get('page_token') || ''
-      const igAccountId = searchParams.get('ig_account_id') || ''
-      const igUsername = searchParams.get('ig_username') || ''
-      const expiresAt = parseInt(searchParams.get('expires_at') || '0')
-
-      if (token && igAccountId) {
-        saveInstagramTokens({
-          accessToken: token,
-          expiresAt,
-          facebookPageId: pageId,
-          instagramAccountId: igAccountId,
-          instagramUsername: igUsername,
-        }).then(() => {
-          createOrUpdate({
-            userId: 'default',
-            instagramConnected: true,
-            instagramAccountId: igAccountId,
-            instagramUsername: igUsername,
-          })
-          setStatus(prev => ({
-            ...prev,
-            instagram: { connected: true, username: igUsername, accountId: igAccountId },
-          }))
-          setMessage(`✅ Instagram conectado! @${igUsername}`)
-        }).catch(err => {
-          setMessage(`Erro ao salvar conexão Instagram: ${err}`)
-        })
-      }
-      // Limpar params da URL
-      window.history.replaceState({}, '', '/dashboard/connections')
-    }
-
-    // YouTube OAuth callback
-    if (searchParams.get('youtube_connected') === 'true') {
-      const token = searchParams.get('token') || ''
-      const channelId = searchParams.get('channel_id') || ''
-      const channelName = searchParams.get('channel_name') || ''
-      const expiresAt = parseInt(searchParams.get('expires_at') || '0')
-
-      if (token && channelId) {
-        saveYoutubeConnection({
-          channelId,
-          channelName,
-        }).then(() => {
-          setStatus(prev => ({
-            ...prev,
-            youtube: { connected: true, channelName, channelId },
-          }))
-          setMessage(`✅ YouTube conectado! Canal: ${channelName}`)
-        }).catch(err => {
-          setMessage(`Erro ao salvar conexão YouTube: ${err}`)
-        })
-      }
-      window.history.replaceState({}, '', '/dashboard/connections')
-    }
-
-    // Erros
-    if (searchParams.get('instagram_error')) {
-      setMessage(`❌ Instagram: ${searchParams.get('instagram_error')}`)
-      window.history.replaceState({}, '', '/dashboard/connections')
-    }
-    // TikTok OAuth callback
-    if (searchParams.get('tiktok_connected') === 'true') {
-      const token = searchParams.get('token') || ''
-      const refreshToken = searchParams.get('refresh_token') || ''
-      const openId = searchParams.get('open_id') || ''
-      const displayName = searchParams.get('display_name') || ''
-      const expiresAt = parseInt(searchParams.get('expires_at') || '0')
-      const refreshExpiresAt = parseInt(searchParams.get('refresh_expires_at') || '0')
-
-      if (token && openId) {
-        saveTiktokConnection({
-          accessToken: token,
-          refreshToken: refreshToken || undefined,
-          openId,
-          displayName,
-          expiresAt,
-          refreshExpiresAt,
-        }).then(() => {
-          setStatus(prev => ({
-            ...prev,
-            tiktok: { connected: true, displayName, openId },
-          }))
-          setMessage(`✅ TikTok conectado! @${displayName}`)
-        }).catch((err: unknown) => {
-          setMessage(`Erro ao salvar conexão TikTok: ${err}`)
-        })
-      }
-      window.history.replaceState({}, '', '/dashboard/connections')
-    }
-
-    if (searchParams.get('youtube_error')) {
-      setMessage(`❌ YouTube: ${searchParams.get('youtube_error')}`)
-      window.history.replaceState({}, '', '/dashboard/connections')
-    }
-    if (searchParams.get('tiktok_error')) {
-      setMessage(`❌ TikTok: ${searchParams.get('tiktok_error')}`)
-      window.history.replaceState({}, '', '/dashboard/connections')
-    }
-  }, [searchParams, saveInstagramTokens, saveYoutubeConnection, saveTiktokConnection, createOrUpdate])
-
-  // Verificar status das conexões
+  // Load saved connections
   useEffect(() => {
     if (settings) {
-      setStatus(prev => ({
-        ...prev,
-        gemini: { configured: true, keyCount: 7 },
-        pixabay: { configured: true },
+      setStatus({
         youtube: {
           connected: settings.youtubeConnected || false,
           channelName: settings.youtubeChannelName,
@@ -172,525 +61,363 @@ export default function ConnectionsPage() {
           username: settings.instagramUsername,
           accountId: settings.instagramAccountId,
         },
-        tiktok: {
-          connected: false,
-        },
-      }))
+        tiktok: { connected: false },
+      })
     }
   }, [settings])
 
-  // Conectar YouTube via OAuth (gerado client-side)
-  const handleConnectYouTubeOAuth = async () => {
+  const showMessage = (msg: string) => {
+    setMessage(msg)
+    setTimeout(() => setMessage(null), 8000)
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // YOUTUBE — Conectar com Channel ID + Buscar automático
+  // ═══════════════════════════════════════════════════════════
+  const handleSearchYouTube = async () => {
+    if (!ytChannelId.trim()) {
+      showMessage('❌ Digite algo para buscar (nome do canal ou URL)')
+      return
+    }
     setLoading(true)
-    setMessage(null)
     try {
-      const clientId = '66548106345-rtgn3tuap241bfjhrd4tjpfj05ch7960.apps.googleusercontent.com'
-      const redirectUri = window.location.origin + '/api/youtube/callback'
-      const scopes = [
-        'https://www.googleapis.com/auth/youtube.upload',
-        'https://www.googleapis.com/auth/youtube',
-        'https://www.googleapis.com/auth/youtube.force-ssl',
-      ].join(' ')
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${encodeURIComponent(clientId)}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&response_type=code` +
-        `&scope=${encodeURIComponent(scopes)}` +
-        `&access_type=offline` +
-        `&prompt=consent`
-      window.location.href = authUrl
+      let channelId = ytChannelId.trim()
+      // Se colou URL do YouTube, extrair o ID
+      if (channelId.includes('youtube.com/') || channelId.includes('youtu.be/')) {
+        const match = channelId.match(/channel\/(UC[\w-]+)/) || channelId.match(/@(\w+)/)
+        if (match) channelId = match[1]
+      }
+      // Se colocou @username, buscar pelo YouTube Data API
+      if (channelId.startsWith('@')) {
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(channelId)}&type=channel&maxResults=1&key=AIzaSyBSRF3ybNlllWKDAT1RC9tt5gEUXWiyqyc`
+        const res = await fetch(searchUrl)
+        const data = await res.json()
+        const item = data.items?.[0]
+        if (item) {
+          channelId = item.id.channelId
+          setYtChannelName(item.snippet.title)
+        } else {
+          showMessage('❌ Canal não encontrado. Tente copiar o URL completo do canal.')
+          setLoading(false)
+          return
+        }
+      }
+      // Buscar info do canal
+      const info = await getChannelInfo({ channelId }) as Record<string, unknown>
+      const infoData = info.info as Record<string, unknown> | undefined
+      if (infoData) {
+        const name = infoData.title as string || channelId
+        setYtChannelName(name)
+        setYtChannelId(channelId)
+        showMessage(`📺 Canal encontrado: ${name}`)
+      } else {
+        showMessage('❌ Canal não encontrado. Verifique o ID/URL.')
+      }
     } catch (err) {
-      setMessage(`Erro ao iniciar conexão YouTube: ${err}`)
+      showMessage(`❌ Erro: ${err}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Conectar YouTube manualmente
-  const handleConnectYouTubeManual = async () => {
-    const channelId = prompt("Cole o ID do seu canal YouTube (ex: UC...):")
-    if (!channelId) return
-    const channelName = prompt("Nome do canal:")
-    if (!channelName) return
+  const handleConnectYouTube = async () => {
+    if (!ytChannelId || !ytChannelName) {
+      showMessage('❌ Busque e selecione um canal primeiro')
+      return
+    }
     setLoading(true)
     try {
-      await saveYoutubeConnection({ channelId, channelName })
-      await createOrUpdate({ userId: 'default', youtubeConnected: true, youtubeChannelId: channelId, youtubeChannelName: channelName })
-      setStatus(prev => ({ ...prev, youtube: { connected: true, channelName, channelId } }))
-      setMessage("✅ YouTube conectado com sucesso!")
+      await saveYoutubeConnection({ channelId: ytChannelId, channelName: ytChannelName })
+      await createOrUpdate({ userId: 'default', youtubeConnected: true, youtubeChannelId: ytChannelId, youtubeChannelName: ytChannelName })
+      setStatus(prev => ({ ...prev, youtube: { connected: true, channelName: ytChannelName, channelId: ytChannelId } }))
+      showMessage(`✅ YouTube conectado! Canal: ${ytChannelName}`)
     } catch (err) {
-      setMessage(`Erro: ${err}`)
+      showMessage(`❌ Erro: ${err}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Desconectar YouTube
   const handleDisconnectYouTube = async () => {
-    if (!confirm("Tem certeza que deseja desconectar o YouTube?")) return
+    if (!confirm("Desconectar YouTube?")) return
     setLoading(true)
     try {
       await disconnectYoutube()
       await createOrUpdate({ userId: 'default', youtubeConnected: false, youtubeChannelId: undefined, youtubeChannelName: undefined })
       setStatus(prev => ({ ...prev, youtube: { connected: false } }))
-      setMessage("YouTube desconectado.")
+      setYtChannelId('')
+      setYtChannelName('')
+      showMessage("YouTube desconectado.")
     } catch (err) {
-      setMessage(`Erro: ${err}`)
+      showMessage(`❌ Erro: ${err}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Conectar Instagram via OAuth (gerado client-side)
-  const handleConnectInstagramOAuth = async () => {
-    setLoading(true)
-    setMessage(null)
-    try {
-      const appId = '1384801380503587'
-      const redirectUri = window.location.origin + '/api/instagram/callback'
-      const scopes = [
-        'instagram_basic',
-        'instagram_content_publish',
-        'pages_show_list',
-        'pages_read_engagement',
-        'pages_manage_posts',
-      ].join(',')
-      const authUrl = `https://www.facebook.com/v19.0/dialog/oauth` +
-        `?client_id=${appId}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&scope=${encodeURIComponent(scopes)}` +
-        `&response_type=code` +
-        `&state=altomatico_ig`
-      window.location.href = authUrl
-    } catch (err) {
-      setMessage(`Erro ao iniciar conexão Instagram: ${err}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Conectar Instagram com auto-detect
-  const handleConnectInstagramAuto = async () => {
-    if (!igManualToken) {
-      setMessage('❌ Cole o Access Token do Facebook')
+  // ═══════════════════════════════════════════════════════════
+  // INSTAGRAM — Conectar com Access Token
+  // ═══════════════════════════════════════════════════════════
+  const handleConnectInstagram = async () => {
+    if (!igToken.trim()) {
+      showMessage('❌ Cole o Access Token do Facebook')
       return
     }
     setLoading(true)
-    setMessage(null)
     try {
-      // 1. Testar o token e detectar contas Instagram
-      const testResult = await testInstagramToken({ accessToken: igManualToken }) as Record<string, unknown>
+      const testResult = await testInstagramToken({ accessToken: igToken.trim() }) as Record<string, unknown>
       const igAccounts = testResult.instagramAccounts as Array<{ pageId: string; pageName: string; igAccountId: string; igUsername: string }> || []
-
       if (!igAccounts || igAccounts.length === 0) {
-        setMessage(`❌ ${testResult.message || 'Nenhuma conta Instagram Business encontrada. Verifique se sua conta é Business/Creator e está vinculada a uma Página do Facebook.'}`)
+        showMessage(`❌ ${testResult.message || 'Nenhuma conta Instagram Business encontrada.'}`)
         setLoading(false)
         return
       }
-
-      // 2. Usar a primeira conta encontrada
       const first = igAccounts[0]
       const saveResult = await saveIgConnection({
-        accessToken: igManualToken,
+        accessToken: igToken.trim(),
         instagramAccountId: first.igAccountId,
         instagramUsername: first.igUsername,
         facebookPageId: first.pageId,
       }) as Record<string, unknown>
-
-      setStatus(prev => ({
-        ...prev,
-        instagram: { connected: true, username: saveResult.username as string || first.igUsername, accountId: first.igAccountId },
-      }))
-      setMessage(`✅ Instagram conectado! @${saveResult.username || first.igUsername} (${saveResult.followers || 0} seguidores)`)
-      setIgManualToken('')
+      await createOrUpdate({
+        userId: 'default',
+        instagramConnected: true,
+        instagramAccountId: first.igAccountId,
+        instagramUsername: first.igUsername,
+      })
+      setStatus(prev => ({ ...prev, instagram: { connected: true, username: first.igUsername, accountId: first.igAccountId } }))
+      showMessage(`✅ Instagram conectado! @${first.igUsername}`)
+      setIgToken('')
     } catch (err) {
-      setMessage(`❌ Erro: ${err}`)
+      showMessage(`❌ Erro: ${err}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Desconectar Instagram
   const handleDisconnectInstagram = async () => {
-    if (!confirm("Tem certeza que deseja desconectar o Instagram?")) return
+    if (!confirm("Desconectar Instagram?")) return
     setLoading(true)
     try {
       await disconnectInstagram({ platform: 'instagram' })
       await createOrUpdate({ userId: 'default', instagramConnected: false, instagramAccountId: undefined, instagramUsername: undefined })
       setStatus(prev => ({ ...prev, instagram: { connected: false } }))
-      setMessage("Instagram desconectado.")
+      showMessage("Instagram desconectado.")
     } catch (err) {
-      setMessage(`Erro: ${err}`)
+      showMessage(`❌ Erro: ${err}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Conectar TikTok via OAuth (gerado client-side)
-  const handleConnectTiktokOAuth = async () => {
-    setLoading(true)
-    setMessage(null)
-    try {
-      const clientKey = 'sbaw625ahoeny0kep9'
-      const redirectUri = window.location.origin + '/api/tiktok/callback'
-      const scopes = ['user.info.basic', 'video.publish'].join(',')
-      const state = Math.random().toString(36).substring(7)
-      const authUrl = `https://www.tiktok.com/v2/auth/authorize/` +
-        `?client_key=${clientKey}` +
-        `&scope=${encodeURIComponent(scopes)}` +
-        `&response_type=code` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&state=${state}`
-      window.location.href = authUrl
-    } catch (err) {
-      setMessage(`Erro ao iniciar conexão TikTok: ${err}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Conectar TikTok com token manual
-  const handleConnectTiktokManual = async () => {
-    if (!tiktokToken) {
-      setMessage('❌ Cole o Access Token do TikTok')
+  // ═══════════════════════════════════════════════════════════
+  // TIKTOK — Conectar com Access Token
+  // ═══════════════════════════════════════════════════════════
+  const handleConnectTiktok = async () => {
+    if (!ttToken.trim()) {
+      showMessage('❌ Cole o Access Token do TikTok')
       return
     }
     setLoading(true)
-    setMessage(null)
     try {
-      const testResult = await testTiktokToken({ accessToken: tiktokToken }) as Record<string, unknown>
-      const expiresAt = Date.now() + 86400 * 1000 // 1 dia
-      const refreshExpiresAt = Date.now() + 86400 * 30 * 1000 // 30 dias
-
+      const testResult = await testTiktokToken({ accessToken: ttToken.trim() }) as Record<string, unknown>
       await saveTiktokConnection({
-        accessToken: tiktokToken,
+        accessToken: ttToken.trim(),
         openId: testResult.openId as string,
         displayName: testResult.displayName as string,
-        avatarUrl: testResult.avatarUrl as string,
-        followerCount: testResult.followerCount as number,
-        expiresAt,
-        refreshExpiresAt,
+        expiresAt: Date.now() + 86400 * 1000,
+        refreshExpiresAt: Date.now() + 86400 * 30 * 1000,
       })
-
-      setStatus(prev => ({
-        ...prev,
-        tiktok: { connected: true, displayName: testResult.displayName as string, openId: testResult.openId as string },
-      }))
-      setMessage(`✅ TikTok conectado! @${testResult.displayName} (${testResult.followerCount || 0} seguidores)`)
-      setTiktokToken('')
+      setStatus(prev => ({ ...prev, tiktok: { connected: true, displayName: testResult.displayName as string, openId: testResult.openId as string } }))
+      showMessage(`✅ TikTok conectado! @${testResult.displayName}`)
+      setTtToken('')
     } catch (err) {
-      setMessage(`❌ Erro TikTok: ${err}`)
+      showMessage(`❌ Erro: ${err}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Desconectar TikTok
   const handleDisconnectTiktok = async () => {
-    if (!confirm("Tem certeza que deseja desconectar o TikTok?")) return
+    if (!confirm("Desconectar TikTok?")) return
     setLoading(true)
     try {
       await disconnectTiktok({ platform: 'tiktok' })
       setStatus(prev => ({ ...prev, tiktok: { connected: false } }))
-      setMessage("TikTok desconectado.")
+      showMessage("TikTok desconectado.")
     } catch (err) {
-      setMessage(`Erro: ${err}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Verificar canal YouTube
-  const handleCheckYouTube = async () => {
-    if (!status.youtube.channelId) return
-    setLoading(true)
-    try {
-      const info = await getChannelInfo({ channelId: status.youtube.channelId })
-      setMessage(`Canal: ${(info as Record<string, unknown>).info ? "Encontrado!" : "Não encontrado"}`)
-    } catch (err) {
-      setMessage(`Erro: ${err}`)
+      showMessage(`❌ Erro: ${err}`)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className='min-h-screen bg-gray-50 p-6 md:p-10'>
+    <div className='min-h-screen bg-gray-50 p-4 md:p-8'>
       {/* Header */}
-      <div className='flex items-center gap-3 mb-8'>
-        <div className='w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center'>
-          <Link2 className='w-6 h-6 text-white' />
+      <div className='flex items-center gap-3 mb-6'>
+        <div className='w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center'>
+          <Link2 className='w-5 h-5 text-white' />
         </div>
         <div>
-          <h1 className='text-2xl font-bold text-gray-900'>Conexões</h1>
-          <p className='text-gray-500 text-sm'>Conecte suas contas e serviços para automação completa</p>
+          <h1 className='text-xl font-bold text-gray-900'>Conexões</h1>
+          <p className='text-gray-500 text-xs'>Conecte suas contas para automação</p>
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Message */}
       {message && (
-        <div className={`mb-6 p-4 rounded-xl flex items-center gap-2 ${
-          message.includes('sucesso') || message.includes('Conectado') || message.includes('Encontrado') || message.includes('✅')
-            ? 'bg-green-50 border border-green-200 text-green-700'
-            : 'bg-red-50 border border-red-200 text-red-700'
+        <div className={`mb-4 p-3 rounded-xl flex items-center gap-2 ${
+          message.includes('✅') ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'
         }`}>
-          {message.includes('sucesso') || message.includes('Encontrado') || message.includes('✅')
-            ? <CheckCircle className='w-5 h-5 shrink-0' />
-            : <AlertCircle className='w-5 h-5 shrink-0' />
-          }
+          {message.includes('✅') ? <CheckCircle className='w-4 h-4 shrink-0' /> : <AlertCircle className='w-4 h-4 shrink-0' />}
           <span className='text-sm'>{message}</span>
-          <button onClick={() => setMessage(null)} className='ml-auto text-xs opacity-50'>✕</button>
         </div>
       )}
 
-      {/* Services Status */}
-      <div className='grid md:grid-cols-2 gap-6 mb-8'>
-        {/* Gemini AI */}
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-          <div className='flex items-start justify-between mb-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center'>
-                <Zap className='w-6 h-6 text-white' />
-              </div>
-              <div>
-                <h3 className='font-bold text-gray-900'>Gemini AI</h3>
-                <p className='text-xs text-gray-500'>Inteligência artificial para criação de conteúdo</p>
-              </div>
+      {/* Services already configured */}
+      <div className='grid grid-cols-2 md:grid-cols-4 gap-3 mb-6'>
+        {[
+          { name: 'Gemini AI', icon: '🧠', ok: true, detail: 'gemini-2.0-flash' },
+          { name: 'Pixabay', icon: '🖼️', ok: true, detail: 'vídeos + imagens' },
+          { name: 'Unsplash', icon: '📷', ok: true, detail: 'fotos HD' },
+          { name: 'Freesound', icon: '🔊', ok: true, detail: 'sons/efeitos' },
+          { name: 'Coverr', icon: '🎬', ok: true, detail: 'vídeos stock' },
+        ].map(s => (
+          <div key={s.name} className='bg-white rounded-xl border border-gray-100 p-3 text-center'>
+            <div className='text-2xl mb-1'>{s.icon}</div>
+            <p className='text-xs font-bold text-gray-900'>{s.name}</p>
+            <p className='text-[10px] text-green-600'>✅ {s.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ═══ YOUTUBE ═══ */}
+      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4'>
+        <div className='flex items-center justify-between mb-4'>
+          <div className='flex items-center gap-3'>
+            <div className='w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center'>
+              <Youtube className='w-5 h-5 text-white' />
             </div>
-            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-              <CheckCircle className='w-3.5 h-3.5' /> Configurado
+            <div>
+              <h3 className='font-bold text-gray-900'>YouTube</h3>
+              <p className='text-xs text-gray-500'>Upload e publicação de vídeos</p>
             </div>
           </div>
-          <div className='bg-gray-50 rounded-lg p-3'>
-            <p className='text-xs text-gray-600'>Modelo: gemini-2.0-flash • API Key configurada ✅</p>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+            status.youtube.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+          }`}>
+            {status.youtube.connected ? <CheckCircle className='w-3.5 h-3.5' /> : <AlertCircle className='w-3.5 h-3.5' />}
+            {status.youtube.connected ? 'Conectado' : 'Desconectado'}
           </div>
         </div>
 
-        {/* Pixabay */}
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-          <div className='flex items-start justify-between mb-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 bg-gradient-to-br from-green-500 to-green-700 rounded-xl flex items-center justify-center'>
-                <Key className='w-6 h-6 text-white' />
-              </div>
-              <div>
-                <h3 className='font-bold text-gray-900'>Pixabay</h3>
-                <p className='text-xs text-gray-500'>Vídeos, imagens e músicas 100% gratuitos</p>
-              </div>
+        {status.youtube.connected ? (
+          <div>
+            <div className='bg-green-50 rounded-lg p-3 mb-3'>
+              <p className='text-sm text-green-700'>📺 <strong>{status.youtube.channelName}</strong></p>
+              <p className='text-[10px] text-green-600 mt-1'>ID: {status.youtube.channelId}</p>
             </div>
-            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-              <CheckCircle className='w-3.5 h-3.5' /> Configurado
-            </div>
+            <Button onClick={handleDisconnectYouTube} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
+              <Unlink className='w-4 h-4 mr-2' /> Desconectar
+            </Button>
           </div>
-          <div className='bg-gray-50 rounded-lg p-3'>
-            <p className='text-xs text-gray-600'>API Key configurada • Acesso a milhões de mídias gratuitas ✅</p>
-          </div>
-        </div>
-
-        {/* Unsplash */}
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-          <div className='flex items-start justify-between mb-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center'>
-                <svg className='w-6 h-6 text-white' viewBox='0 0 24 24' fill='currentColor'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/></svg>
-              </div>
-              <div>
-                <h3 className='font-bold text-gray-900'>Unsplash</h3>
-                <p className='text-xs text-gray-500'>Fotos HD gratuitas para conteúdo</p>
-              </div>
-            </div>
-            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-              <CheckCircle className='w-3.5 h-3.5' /> Configurado
-            </div>
-          </div>
-          <div className='bg-gray-50 rounded-lg p-3'>
-            <p className='text-xs text-gray-600'>Access Key configurada • 50 req/hora grátis ✅</p>
-          </div>
-        </div>
-
-        {/* Freesound */}
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-          <div className='flex items-start justify-between mb-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 bg-gradient-to-br from-red-600 to-red-800 rounded-xl flex items-center justify-center'>
-                <Music className='w-6 h-6 text-white' />
-              </div>
-              <div>
-                <h3 className='font-bold text-gray-900'>Freesound</h3>
-                <p className='text-xs text-gray-500'>Sons e efeitos sonoros gratuitos</p>
-              </div>
-            </div>
-            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-              <CheckCircle className='w-3.5 h-3.5' /> Configurado
-            </div>
-          </div>
-          <div className='bg-gray-50 rounded-lg p-3'>
-            <p className='text-xs text-gray-600'>Client ID configurado • Sons Creative Commons ✅</p>
-          </div>
-        </div>
-
-        {/* Coverr */}
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-          <div className='flex items-start justify-between mb-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 bg-gradient-to-br from-lime-400 to-lime-600 rounded-xl flex items-center justify-center'>
-                <svg className='w-6 h-6 text-white' viewBox='0 0 24 24' fill='currentColor'><path d='M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z'/></svg>
-              </div>
-              <div>
-                <h3 className='font-bold text-gray-900'>Coverr</h3>
-                <p className='text-xs text-gray-500'>Vídeos stock gratuitos HD/4K</p>
-              </div>
-            </div>
-            <div className='flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-              <CheckCircle className='w-3.5 h-3.5' /> Configurado
-            </div>
-          </div>
-          <div className='bg-gray-50 rounded-lg p-3'>
-            <p className='text-xs text-gray-600'>API Key configurada • 50 req/hora (demo) ✅</p>
-          </div>
-        </div>
-
-        {/* ═══ YOUTUBE ═══ */}
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-          <div className='flex items-start justify-between mb-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 bg-gradient-to-br from-red-500 to-red-700 rounded-xl flex items-center justify-center'>
-                <Youtube className='w-6 h-6 text-white' />
-              </div>
-              <div>
-                <h3 className='font-bold text-gray-900'>YouTube</h3>
-                <p className='text-xs text-gray-500'>Upload e publicação automática de vídeos</p>
-              </div>
-            </div>
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-              status.youtube.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-            }`}>
-              {status.youtube.connected ? <CheckCircle className='w-3.5 h-3.5' /> : <AlertCircle className='w-3.5 h-3.5' />}
-              {status.youtube.connected ? 'Conectado' : 'Desconectado'}
-            </div>
-          </div>
-
-          {status.youtube.connected && status.youtube.channelName && (
-            <div className='bg-gray-50 rounded-lg p-3 mb-4'>
-              <p className='text-xs text-gray-600'>📺 Canal: <strong>{status.youtube.channelName}</strong></p>
-              <p className='text-[10px] text-gray-400 mt-1'>ID: {status.youtube.channelId}</p>
-            </div>
-          )}
-
-          <div className='flex gap-2'>
-            {status.youtube.connected ? (
-              <>
-                <Button onClick={handleDisconnectYouTube} variant='outline' className='flex-1 text-red-600 border-red-200 hover:bg-red-50'>
-                  <Unlink className='w-4 h-4 mr-2' /> Desconectar
+        ) : (
+          <div className='space-y-3'>
+            <div>
+              <label className='block text-xs font-medium text-gray-600 mb-1'>URL ou @username do canal</label>
+              <div className='flex gap-2'>
+                <Input
+                  placeholder='Ex: @projetocyt ou https://youtube.com/@canal'
+                  value={ytChannelId}
+                  onChange={e => setYtChannelId(e.target.value)}
+                  className='text-sm'
+                />
+                <Button onClick={handleSearchYouTube} disabled={loading} variant='outline' className='shrink-0'>
+                  <Search className='w-4 h-4' />
                 </Button>
-                <Button onClick={handleCheckYouTube} variant='outline' className='flex-1'>
-                  <RefreshCw className='w-4 h-4 mr-2' /> Verificar
-                </Button>
-              </>
-            ) : (
-              <div className='w-full space-y-2'>
-                <Button onClick={handleConnectYouTubeOAuth} disabled={loading} className='w-full bg-red-600 hover:bg-red-700 text-white'>
-                  <ExternalLink className='w-4 h-4 mr-2' /> Conectar via Google OAuth
-                </Button>
-                <Button onClick={handleConnectYouTubeManual} disabled={loading} variant='outline' className='w-full'>
-                  <Link2 className='w-4 h-4 mr-2' /> Conectar manualmente (Channel ID)
-                </Button>
+              </div>
+            </div>
+            {ytChannelName && (
+              <div className='bg-blue-50 rounded-lg p-3'>
+                <p className='text-sm text-blue-700'>📺 Canal encontrado: <strong>{ytChannelName}</strong></p>
               </div>
             )}
+            <Button onClick={handleConnectYouTube} disabled={loading || !ytChannelName} className='w-full bg-red-600 hover:bg-red-700 text-white'>
+              {loading ? <RefreshCw className='w-4 h-4 mr-2 animate-spin' /> : <Link2 className='w-4 h-4 mr-2' />}
+              {loading ? 'Buscando...' : 'Conectar YouTube'}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* ═══ INSTAGRAM ═══ */}
+      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4'>
+        <div className='flex items-center justify-between mb-4'>
+          <div className='flex items-center gap-3'>
+            <div className='w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-500 rounded-xl flex items-center justify-center'>
+              <Instagram className='w-5 h-5 text-white' />
+            </div>
+            <div>
+              <h3 className='font-bold text-gray-900'>Instagram</h3>
+              <p className='text-xs text-gray-500'>Postagem de Reels e Posts</p>
+            </div>
+          </div>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+            status.instagram.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+          }`}>
+            {status.instagram.connected ? <CheckCircle className='w-3.5 h-3.5' /> : <AlertCircle className='w-3.5 h-3.5' />}
+            {status.instagram.connected ? 'Conectado' : 'Desconectado'}
           </div>
         </div>
 
-        {/* ═══ INSTAGRAM ═══ */}
-        <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-          <div className='flex items-start justify-between mb-4'>
-            <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 bg-gradient-to-br from-pink-500 to-orange-500 rounded-xl flex items-center justify-center'>
-                <Instagram className='w-6 h-6 text-white' />
-              </div>
-              <div>
-                <h3 className='font-bold text-gray-900'>Instagram</h3>
-                <p className='text-xs text-gray-500'>Postagem automática de Reels e Posts</p>
-              </div>
+        {status.instagram.connected ? (
+          <div>
+            <div className='bg-green-50 rounded-lg p-3 mb-3'>
+              <p className='text-sm text-green-700'>📸 <strong>@{status.instagram.username}</strong></p>
+              <p className='text-[10px] text-green-600 mt-1'>ID: {status.instagram.accountId}</p>
             </div>
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-              status.instagram.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-            }`}>
-              {status.instagram.connected ? <CheckCircle className='w-3.5 h-3.5' /> : <AlertCircle className='w-3.5 h-3.5' />}
-              {status.instagram.connected ? 'Conectado' : 'Desconectado'}
-            </div>
+            <Button onClick={handleDisconnectInstagram} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
+              <Unlink className='w-4 h-4 mr-2' /> Desconectar
+            </Button>
           </div>
-
-          {status.instagram.connected && status.instagram.username && (
-            <div className='bg-gray-50 rounded-lg p-3 mb-4'>
-              <p className='text-xs text-gray-600'>📸 Perfil: <strong>@{status.instagram.username}</strong></p>
-              <p className='text-[10px] text-gray-400 mt-1'>ID: {status.instagram.accountId}</p>
-            </div>
-          )}
-
-          {status.instagram.connected ? (
-            <div className='flex gap-2'>
-              <Button onClick={handleDisconnectInstagram} variant='outline' className='flex-1 text-red-600 border-red-200 hover:bg-red-50'>
-                <Unlink className='w-4 h-4 mr-2' /> Desconectar
-              </Button>
-            </div>
-          ) : (
-            <div className='space-y-3'>
-              {/* OAuth */}
-              <Button onClick={handleConnectInstagramOAuth} disabled={loading} className='w-full bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white'>
-                <ExternalLink className='w-4 h-4 mr-2' /> Conectar via Facebook OAuth
-              </Button>
-
+        ) : (
+          <div className='space-y-3'>
+            <div>
+              <label className='block text-xs font-medium text-gray-600 mb-1'>Facebook Access Token</label>
               <div className='relative'>
-                <div className='absolute inset-0 flex items-center'>
-                  <div className='w-full border-t border-gray-200' />
-                </div>
-                <div className='relative flex justify-center text-xs'>
-                  <span className='bg-white px-2 text-gray-400'>ou conecte manualmente</span>
-                </div>
+                <Input
+                  type={showIgToken ? 'text' : 'password'}
+                  placeholder='Cole o Long-lived Access Token'
+                  value={igToken}
+                  onChange={e => setIgToken(e.target.value)}
+                  className='text-sm pr-8'
+                />
+                <button type='button' onClick={() => setShowIgToken(!showIgToken)}
+                  className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-400'>
+                  {showIgToken ? <EyeOff className='w-3.5 h-3.5' /> : <Eye className='w-3.5 h-3.5' />}
+                </button>
               </div>
-
-              {/* Token input + auto-detect */}
-              <div className='space-y-2'>
-                <div>
-                  <label className='block text-xs font-medium text-gray-600 mb-1'>Facebook Access Token *</label>
-                  <div className='relative'>
-                    <Input
-                      type={showIgToken ? 'text' : 'password'}
-                      placeholder='Cole o Long-lived Access Token'
-                      value={igManualToken}
-                      onChange={e => setIgManualToken(e.target.value)}
-                      className='text-xs pr-8'
-                    />
-                    <button
-                      type='button'
-                      onClick={() => setShowIgToken(!showIgToken)}
-                      className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                    >
-                      {showIgToken ? <EyeOff className='w-3.5 h-3.5' /> : <Eye className='w-3.5 h-3.5' />}
-                    </button>
-                  </div>
-                  <p className='text-[10px] text-gray-400 mt-1'>O sistema detecta automaticamente sua conta Instagram vinculada</p>
-                </div>
-                <Button onClick={handleConnectInstagramAuto} disabled={loading || !igManualToken} className='w-full bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white'>
-                  {loading ? <RefreshCw className='w-4 h-4 mr-2 animate-spin' /> : <Link2 className='w-4 h-4 mr-2' />}
-                  {loading ? 'Detectando conta...' : 'Conectar Instagram'}
-                </Button>
-              </div>
+              <p className='text-[10px] text-gray-400 mt-1'>Detecta sua conta @agend_ai_serv automaticamente</p>
             </div>
-          )}
-        </div>
+            <Button onClick={handleConnectInstagram} disabled={loading || !igToken} className='w-full bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white'>
+              {loading ? <RefreshCw className='w-4 h-4 mr-2 animate-spin' /> : <Link2 className='w-4 h-4 mr-2' />}
+              {loading ? 'Detectando conta...' : 'Conectar Instagram'}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* ═══ TIKTOK ═══ */}
-      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8'>
-        <div className='flex items-start justify-between mb-4'>
+      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4'>
+        <div className='flex items-center justify-between mb-4'>
           <div className='flex items-center gap-3'>
-            <div className='w-12 h-12 bg-gradient-to-br from-cyan-500 to-black rounded-xl flex items-center justify-center'>
-              <Music className='w-6 h-6 text-white' />
+            <div className='w-10 h-10 bg-gradient-to-br from-cyan-500 to-black rounded-xl flex items-center justify-center'>
+              <Music className='w-5 h-5 text-white' />
             </div>
             <div>
               <h3 className='font-bold text-gray-900'>TikTok</h3>
-              <p className='text-xs text-gray-500'>Postagem automática de vídeos curtos</p>
+              <p className='text-xs text-gray-500'>Vídeos curtos automáticos</p>
             </div>
           </div>
           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
@@ -701,95 +428,67 @@ export default function ConnectionsPage() {
           </div>
         </div>
 
-        {status.tiktok.connected && status.tiktok.displayName && (
-          <div className='bg-gray-50 rounded-lg p-3 mb-4'>
-            <p className='text-xs text-gray-600'>🎵 Perfil: <strong>@{status.tiktok.displayName}</strong></p>
-          </div>
-        )}
-
         {status.tiktok.connected ? (
-          <div className='flex gap-2'>
-            <Button onClick={handleDisconnectTiktok} variant='outline' className='flex-1 text-red-600 border-red-200 hover:bg-red-50'>
+          <div>
+            <div className='bg-green-50 rounded-lg p-3 mb-3'>
+              <p className='text-sm text-green-700'>🎵 <strong>@{status.tiktok.displayName}</strong></p>
+            </div>
+            <Button onClick={handleDisconnectTiktok} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
             </Button>
           </div>
         ) : (
           <div className='space-y-3'>
-            <Button onClick={handleConnectTiktokOAuth} disabled={loading} className='w-full bg-gradient-to-r from-cyan-500 to-black hover:from-cyan-600 hover:to-gray-900 text-white'>
-              <ExternalLink className='w-4 h-4 mr-2' /> Conectar via TikTok OAuth
+            <div>
+              <label className='block text-xs font-medium text-gray-600 mb-1'>TikTok Access Token</label>
+              <div className='relative'>
+                <Input
+                  type={showTtToken ? 'text' : 'password'}
+                  placeholder='Cole o Access Token do TikTok'
+                  value={ttToken}
+                  onChange={e => setTtToken(e.target.value)}
+                  className='text-sm pr-8'
+                />
+                <button type='button' onClick={() => setShowTtToken(!showTtToken)}
+                  className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-400'>
+                  {showTtToken ? <EyeOff className='w-3.5 h-3.5' /> : <Eye className='w-3.5 h-3.5' />}
+                </button>
+              </div>
+              <p className='text-[10px] text-gray-400 mt-1'>Obtenha em developers.tiktok.com</p>
+            </div>
+            <Button onClick={handleConnectTiktok} disabled={loading || !ttToken} className='w-full bg-gradient-to-r from-cyan-500 to-black hover:from-cyan-600 hover:to-gray-900 text-white'>
+              {loading ? <RefreshCw className='w-4 h-4 mr-2 animate-spin' /> : <Link2 className='w-4 h-4 mr-2' />}
+              {loading ? 'Conectando...' : 'Conectar TikTok'}
             </Button>
-
-            <div className='relative'>
-              <div className='absolute inset-0 flex items-center'>
-                <div className='w-full border-t border-gray-200' />
-              </div>
-              <div className='relative flex justify-center text-xs'>
-                <span className='bg-white px-2 text-gray-400'>ou conecte com token</span>
-              </div>
-            </div>
-
-            <div className='space-y-2'>
-              <div>
-                <label className='block text-xs font-medium text-gray-600 mb-1'>TikTok Access Token</label>
-                <div className='relative'>
-                  <Input
-                    type={showTtToken ? 'text' : 'password'}
-                    placeholder='Cole o Access Token do TikTok'
-                    value={tiktokToken}
-                    onChange={e => setTiktokToken(e.target.value)}
-                    className='text-xs pr-8'
-                  />
-                  <button
-                    type='button'
-                    onClick={() => setShowTtToken(!showTtToken)}
-                    className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                  >
-                    {showTtToken ? <EyeOff className='w-3.5 h-3.5' /> : <Eye className='w-3.5 h-3.5' />}
-                  </button>
-                </div>
-              </div>
-              <Button onClick={handleConnectTiktokManual} disabled={loading || !tiktokToken} className='w-full' variant='outline'>
-                {loading ? <RefreshCw className='w-4 h-4 mr-2 animate-spin' /> : <Link2 className='w-4 h-4 mr-2' />}
-                {loading ? 'Conectando...' : 'Conectar TikTok'}
-              </Button>
-            </div>
           </div>
         )}
       </div>
 
-      {/* Arquitetura */}
-      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
-        <h3 className='font-bold text-gray-900 mb-4 flex items-center gap-2'>
-          <Shield className='w-5 h-5 text-purple-500' /> Arquitetura do Sistema
+      {/* Architecture */}
+      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
+        <h3 className='font-bold text-gray-900 mb-3 flex items-center gap-2'>
+          <Shield className='w-4 h-4 text-purple-500' /> Arquitetura
         </h3>
-        <div className='grid md:grid-cols-3 gap-4'>
-          <div className='bg-blue-50 rounded-xl p-4'>
-            <h4 className='font-bold text-blue-700 text-sm mb-2'>🧠 Inteligência</h4>
-            <ul className='text-xs text-blue-600 space-y-1'>
+        <div className='grid md:grid-cols-3 gap-3'>
+          <div className='bg-blue-50 rounded-xl p-3'>
+            <h4 className='font-bold text-blue-700 text-xs mb-1'>🧠 IA</h4>
+            <ul className='text-[11px] text-blue-600 space-y-0.5'>
               <li>• Gemini 2.0 Flash</li>
-              <li>• Research + Strategy + Script</li>
-              <li>• SEO + Hashtags + Metadata</li>
-              <li>• Policy Check + Originality</li>
+              <li>• Roteiro + SEO + Hashtags</li>
             </ul>
           </div>
-          <div className='bg-green-50 rounded-xl p-4'>
-            <h4 className='font-bold text-green-700 text-sm mb-2'>🎬 Produção</h4>
-            <ul className='text-xs text-green-600 space-y-1'>
-              <li>• Pixabay (vídeos + imagens)</li>
-              <li>• Unsplash (fotos HD)</li>
-              <li>• Coverr (vídeos stock)</li>
-              <li>• Freesound (sons/efeitos)</li>
-              <li>• Edge TTS (narração grátis)</li>
-              <li>• Legendas automáticas</li>
+          <div className='bg-green-50 rounded-xl p-3'>
+            <h4 className='font-bold text-green-700 text-xs mb-1'>🎬 Mídias</h4>
+            <ul className='text-[11px] text-green-600 space-y-0.5'>
+              <li>• Pixabay + Unsplash + Coverr</li>
+              <li>• Freesound + Edge TTS</li>
             </ul>
           </div>
-          <div className='bg-purple-50 rounded-xl p-4'>
-            <h4 className='font-bold text-purple-700 text-sm mb-2'>📤 Publicação</h4>
-            <ul className='text-xs text-purple-600 space-y-1'>
-              <li>• YouTube Data API v3</li>
-              <li>• Instagram Graph API v19</li>
+          <div className='bg-purple-50 rounded-xl p-3'>
+            <h4 className='font-bold text-purple-700 text-xs mb-1'>📤 Publicação</h4>
+            <ul className='text-[11px] text-purple-600 space-y-0.5'>
+              <li>• YouTube + Instagram + TikTok</li>
               <li>• Agendamento inteligente</li>
-              <li>• Analytics + Aprendizado</li>
             </ul>
           </div>
         </div>
