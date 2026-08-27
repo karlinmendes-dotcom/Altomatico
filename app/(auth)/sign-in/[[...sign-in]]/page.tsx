@@ -3,13 +3,10 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useMutation } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
 import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 
 export default function SignInPage() {
   const router = useRouter();
-  const login = useMutation(api.auth.login);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,14 +24,20 @@ export default function SignInPage() {
         throw new Error("Preencha todos os campos");
       }
 
-      const result = await login({ email, password });
+      if (password.length < 4) {
+        throw new Error("A senha deve ter pelo menos 4 caracteres");
+      }
+
+      // Auth simples via localStorage (uso pessoal)
+      const userId = `user_${email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      const displayName = email.split("@")[0];
 
       localStorage.setItem(
         "altomatico_user",
         JSON.stringify({
-          id: result.userId,
-          email: result.email,
-          displayName: result.displayName,
+          id: userId,
+          email,
+          displayName,
         })
       );
 

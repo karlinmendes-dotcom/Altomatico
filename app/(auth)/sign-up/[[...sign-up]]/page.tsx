@@ -3,13 +3,10 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useMutation } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
 import { Eye, EyeOff, Loader2, ArrowRight, Check } from "lucide-react";
 
 export default function SignUpPage() {
   const router = useRouter();
-  const register = useMutation(api.auth.register);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -37,18 +34,15 @@ export default function SignUpPage() {
         throw new Error("As senhas não conferem");
       }
 
-      const result = await register({
-        email,
-        password,
-        displayName: name,
-      });
+      // Auth simples via localStorage (uso pessoal)
+      const userId = `user_${email.replace(/[^a-zA-Z0-9]/g, "_")}`;
 
       localStorage.setItem(
         "altomatico_user",
         JSON.stringify({
-          id: result.userId,
-          email: result.email,
-          displayName: result.displayName,
+          id: userId,
+          email,
+          displayName: name,
         })
       );
 
@@ -173,7 +167,7 @@ export default function SignUpPage() {
         </div>
 
         <p className="text-center text-gray-500 text-xs mt-6">
-          Plano gratuito inclui: 10 conteúdos/mês • YouTube + Instagram
+          Plano gratuito inclui: YouTube + Instagram + TikTok
         </p>
       </div>
     </div>
