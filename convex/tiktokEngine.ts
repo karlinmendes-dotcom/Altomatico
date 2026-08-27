@@ -123,9 +123,8 @@ export const publishVideo = action({
     )),
   },
   handler: async (ctx, args) => {
-    const apiMod = await import("./_generated/api");
-    const connections = await ctx.runQuery(apiMod.api.connections.getByUser, { userId: "default" });
-    const tiktokConn = (connections as Array<Record<string, unknown>>).find((c) => c.platform === "tiktok");
+    const connections = await ctx.runQuery("connections:getByUser" as never, { userId: "default" } as never) as Array<Record<string, unknown>> | null;
+    const tiktokConn = connections?.find((c) => c.platform === "tiktok");
 
     let accessToken = tiktokConn?.tiktokAccessToken as string | undefined;
     if (!accessToken) throw new Error("TikTok não conectado. Conecte sua conta primeiro.");
@@ -149,13 +148,13 @@ export const publishVideo = action({
         if (data.data?.access_token) {
           accessToken = data.data.access_token;
           const newExpiresAt = Date.now() + (data.data.expires_in || 86400) * 1000;
-          await ctx.runMutation(apiMod.api.helpers.saveTiktokTokens, {
+          await ctx.runMutation("helpers:saveTiktokTokens" as never, {
             accessToken: data.data.access_token,
             refreshToken: data.data.refresh_token || refreshToken,
             expiresAt: newExpiresAt,
             openId: data.data.open_id || tiktokConn?.tiktokOpenId || "",
             creatorUsername: tiktokConn?.tiktokCreatorUsername as string | undefined,
-          });
+          } as never);
         }
       }
     }
@@ -172,15 +171,20 @@ export const publishVideo = action({
     const initData = await initResponse.json();
 
     if (initData.data?.publish_id) {
-      const contentResult = await ctx.runMutation(apiMod.api.contentQueue.create, {
+      const now = Date.now();
+      const contentResult = await ctx.runMutation("contentQueue:create" as never, {
         userId: "default",
         title: args.title,
-        description: args.description,
-        platform: "tiktok" as const,
-        contentType: "short" as const,
-        source: "ai_generated" as const,
+        description: args.description || args.title,
+        platform: "tiktok",
+        contentType: "short",
+        status: "draft",
+        source: "ai_generated",
         videoUrl: args.videoUrl,
-      });
+        retryCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      } as never);
       return {
         success: true, publishId: initData.data.publish_id,
         videoUrl: `https://tiktok.com/@${(tiktokConn?.tiktokCreatorUsername as string) || "user"}/video/${initData.data.publish_id}`,

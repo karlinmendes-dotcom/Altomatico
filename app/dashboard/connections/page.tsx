@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Youtube, Instagram, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, ExternalLink, Eye, EyeOff } from 'lucide-react'
+import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, ExternalLink, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAction, useMutation, useQuery } from 'convex/react'
@@ -10,6 +10,7 @@ import { useSearchParams } from 'next/navigation'
 interface ConnectionStatus {
   youtube: { connected: boolean; channelName?: string; channelId?: string }
   instagram: { connected: boolean; username?: string; accountId?: string }
+  tiktok: { connected: boolean; displayName?: string; openId?: string }
   gemini: { configured: boolean; keyCount: number }
   pixabay: { configured: boolean }
 }
@@ -19,6 +20,7 @@ export default function ConnectionsPage() {
   const [status, setStatus] = useState<ConnectionStatus>({
     youtube: { connected: false },
     instagram: { connected: false },
+    tiktok: { connected: false },
     gemini: { configured: false, keyCount: 0 },
     pixabay: { configured: false },
   })
@@ -38,6 +40,12 @@ export default function ConnectionsPage() {
   const getYoutubeAuthUrl = useAction(api.youtubeEngine.getYoutubeAuthUrl)
   const getInstagramAuthUrl = useAction(api.instagramEngine.getInstagramAuthUrl)
   const testInstagramToken = useAction(api.instagramConnection.testInstagramToken)
+  const getTiktokAuthUrl = useAction(api.tiktokConnection.getTiktokAuthUrl)
+  const testTiktokToken = useAction(api.tiktokConnection.testTiktokToken)
+  const saveTiktokConnection = useAction(api.tiktokConnection.saveTiktokConnection)
+  const disconnectTiktok = useMutation(api.connections.disconnect)
+  const [tiktokToken, setTiktokToken] = useState('')
+  const [showTtToken, setShowTtToken] = useState(false)
   const saveIgConnection = useAction(api.instagramConnection.saveInstagramConnection)
   const getChannelInfo = useAction(api.youtubeEngine.getChannelInfo)
   const createOrUpdate = useMutation(api.settings.createOrUpdate)
@@ -109,11 +117,45 @@ export default function ConnectionsPage() {
       setMessage(`❌ Instagram: ${searchParams.get('instagram_error')}`)
       window.history.replaceState({}, '', '/dashboard/connections')
     }
+    // TikTok OAuth callback
+    if (searchParams.get('tiktok_connected') === 'true') {
+      const token = searchParams.get('token') || ''
+      const refreshToken = searchParams.get('refresh_token') || ''
+      const openId = searchParams.get('open_id') || ''
+      const displayName = searchParams.get('display_name') || ''
+      const expiresAt = parseInt(searchParams.get('expires_at') || '0')
+      const refreshExpiresAt = parseInt(searchParams.get('refresh_expires_at') || '0')
+
+      if (token && openId) {
+        saveTiktokConnection({
+          accessToken: token,
+          refreshToken: refreshToken || undefined,
+          openId,
+          displayName,
+          expiresAt,
+          refreshExpiresAt,
+        }).then(() => {
+          setStatus(prev => ({
+            ...prev,
+            tiktok: { connected: true, displayName, openId },
+          }))
+          setMessage(`✅ TikTok conectado! @${displayName}`)
+        }).catch((err: unknown) => {
+          setMessage(`Erro ao salvar conexão TikTok: ${err}`)
+        })
+      }
+      window.history.replaceState({}, '', '/dashboard/connections')
+    }
+
     if (searchParams.get('youtube_error')) {
       setMessage(`❌ YouTube: ${searchParams.get('youtube_error')}`)
       window.history.replaceState({}, '', '/dashboard/connections')
     }
-  }, [searchParams, saveInstagramTokens, saveYoutubeConnection, createOrUpdate])
+    if (searchParams.get('tiktok_error')) {
+      setMessage(`❌ TikTok: ${searchParams.get('tiktok_error')}`)
+      window.history.replaceState({}, '', '/dashboard/connections')
+    }
+  }, [searchParams, saveInstagramTokens, saveYoutubeConnection, saveTiktokConnection, createOrUpdate])
 
   // Verificar status das conexões
   useEffect(() => {
@@ -131,6 +173,9 @@ export default function ConnectionsPage() {
           connected: settings.instagramConnected || false,
           username: settings.instagramUsername,
           accountId: settings.instagramAccountId,
+        },
+        tiktok: {
+          connected: false,
         },
       }))
     }
@@ -255,6 +300,74 @@ export default function ConnectionsPage() {
       await createOrUpdate({ userId: 'default', instagramConnected: false, instagramAccountId: undefined, instagramUsername: undefined })
       setStatus(prev => ({ ...prev, instagram: { connected: false } }))
       setMessage("Instagram desconectado.")
+    } catch (err) {
+      setMessage(`Erro: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Conectar TikTok via OAuth
+  const handleConnectTiktokOAuth = async () => {
+    setLoading(true)
+    setMessage(null)
+    try {
+      const redirectUri = window.location.origin + '/api/tiktok/callback'
+      const result = await getTiktokAuthUrl({ redirectUri })
+      if ((result as Record<string, string>).authUrl) {
+        window.location.href = (result as Record<string, string>).authUrl
+      }
+    } catch (err) {
+      setMessage(`Erro ao iniciar conexão TikTok: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Conectar TikTok com token manual
+  const handleConnectTiktokManual = async () => {
+    if (!tiktokToken) {
+      setMessage('❌ Cole o Access Token do TikTok')
+      return
+    }
+    setLoading(true)
+    setMessage(null)
+    try {
+      const testResult = await testTiktokToken({ accessToken: tiktokToken }) as Record<string, unknown>
+      const expiresAt = Date.now() + 86400 * 1000 // 1 dia
+      const refreshExpiresAt = Date.now() + 86400 * 30 * 1000 // 30 dias
+
+      await saveTiktokConnection({
+        accessToken: tiktokToken,
+        openId: testResult.openId as string,
+        displayName: testResult.displayName as string,
+        avatarUrl: testResult.avatarUrl as string,
+        followerCount: testResult.followerCount as number,
+        expiresAt,
+        refreshExpiresAt,
+      })
+
+      setStatus(prev => ({
+        ...prev,
+        tiktok: { connected: true, displayName: testResult.displayName as string, openId: testResult.openId as string },
+      }))
+      setMessage(`✅ TikTok conectado! @${testResult.displayName} (${testResult.followerCount || 0} seguidores)`)
+      setTiktokToken('')
+    } catch (err) {
+      setMessage(`❌ Erro TikTok: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Desconectar TikTok
+  const handleDisconnectTiktok = async () => {
+    if (!confirm("Tem certeza que deseja desconectar o TikTok?")) return
+    setLoading(true)
+    try {
+      await disconnectTiktok({ platform: 'tiktok' })
+      setStatus(prev => ({ ...prev, tiktok: { connected: false } }))
+      setMessage("TikTok desconectado.")
     } catch (err) {
       setMessage(`Erro: ${err}`)
     } finally {
@@ -478,6 +591,82 @@ export default function ConnectionsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ═══ TIKTOK ═══ */}
+      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8'>
+        <div className='flex items-start justify-between mb-4'>
+          <div className='flex items-center gap-3'>
+            <div className='w-12 h-12 bg-gradient-to-br from-cyan-500 to-black rounded-xl flex items-center justify-center'>
+              <Music className='w-6 h-6 text-white' />
+            </div>
+            <div>
+              <h3 className='font-bold text-gray-900'>TikTok</h3>
+              <p className='text-xs text-gray-500'>Postagem automática de vídeos curtos</p>
+            </div>
+          </div>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+            status.tiktok.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+          }`}>
+            {status.tiktok.connected ? <CheckCircle className='w-3.5 h-3.5' /> : <AlertCircle className='w-3.5 h-3.5' />}
+            {status.tiktok.connected ? 'Conectado' : 'Desconectado'}
+          </div>
+        </div>
+
+        {status.tiktok.connected && status.tiktok.displayName && (
+          <div className='bg-gray-50 rounded-lg p-3 mb-4'>
+            <p className='text-xs text-gray-600'>🎵 Perfil: <strong>@{status.tiktok.displayName}</strong></p>
+          </div>
+        )}
+
+        {status.tiktok.connected ? (
+          <div className='flex gap-2'>
+            <Button onClick={handleDisconnectTiktok} variant='outline' className='flex-1 text-red-600 border-red-200 hover:bg-red-50'>
+              <Unlink className='w-4 h-4 mr-2' /> Desconectar
+            </Button>
+          </div>
+        ) : (
+          <div className='space-y-3'>
+            <Button onClick={handleConnectTiktokOAuth} disabled={loading} className='w-full bg-gradient-to-r from-cyan-500 to-black hover:from-cyan-600 hover:to-gray-900 text-white'>
+              <ExternalLink className='w-4 h-4 mr-2' /> Conectar via TikTok OAuth
+            </Button>
+
+            <div className='relative'>
+              <div className='absolute inset-0 flex items-center'>
+                <div className='w-full border-t border-gray-200' />
+              </div>
+              <div className='relative flex justify-center text-xs'>
+                <span className='bg-white px-2 text-gray-400'>ou conecte com token</span>
+              </div>
+            </div>
+
+            <div className='space-y-2'>
+              <div>
+                <label className='block text-xs font-medium text-gray-600 mb-1'>TikTok Access Token</label>
+                <div className='relative'>
+                  <Input
+                    type={showTtToken ? 'text' : 'password'}
+                    placeholder='Cole o Access Token do TikTok'
+                    value={tiktokToken}
+                    onChange={e => setTiktokToken(e.target.value)}
+                    className='text-xs pr-8'
+                  />
+                  <button
+                    type='button'
+                    onClick={() => setShowTtToken(!showTtToken)}
+                    className='absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                  >
+                    {showTtToken ? <EyeOff className='w-3.5 h-3.5' /> : <Eye className='w-3.5 h-3.5' />}
+                  </button>
+                </div>
+              </div>
+              <Button onClick={handleConnectTiktokManual} disabled={loading || !tiktokToken} className='w-full' variant='outline'>
+                {loading ? <RefreshCw className='w-4 h-4 mr-2 animate-spin' /> : <Link2 className='w-4 h-4 mr-2' />}
+                {loading ? 'Conectando...' : 'Conectar TikTok'}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Arquitetura */}

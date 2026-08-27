@@ -26,6 +26,8 @@ import type * as scheduler from "../scheduler.js";
 import type * as seoEngine from "../seoEngine.js";
 import type * as settings from "../settings.js";
 import type * as tasks from "../tasks.js";
+import type * as tiktokConnection from "../tiktokConnection.js";
+import type * as tiktokEngine from "../tiktokEngine.js";
 import type * as videoPipeline from "../videoPipeline.js";
 import type * as youtubeAutomation from "../youtubeAutomation.js";
 import type * as youtubeEngine from "../youtubeEngine.js";
@@ -55,6 +57,8 @@ declare const fullApi: ApiFromModules<{
   seoEngine: typeof seoEngine;
   settings: typeof settings;
   tasks: typeof tasks;
+  tiktokConnection: typeof tiktokConnection;
+  tiktokEngine: typeof tiktokEngine;
   videoPipeline: typeof videoPipeline;
   youtubeAutomation: typeof youtubeAutomation;
   youtubeEngine: typeof youtubeEngine;

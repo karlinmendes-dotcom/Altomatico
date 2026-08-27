@@ -60,3 +60,4 @@ isolate/
 # Logs
 *.log
 npm-debug.log*
+CREDENCIAIS_ALTOMATICO.md
