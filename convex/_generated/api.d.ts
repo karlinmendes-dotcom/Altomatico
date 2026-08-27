@@ -8,50 +8,72 @@
  * @module
  */
 
+import type * as aiEngine from "../aiEngine.js";
+import type * as auth from "../auth.js";
+import type * as connections from "../connections.js";
+import type * as contentQueue from "../contentQueue.js";
+import type * as contents from "../contents.js";
+import type * as generateContent from "../generateContent.js";
+import type * as helpers from "../helpers.js";
+import type * as instagramConnection from "../instagramConnection.js";
+import type * as instagramEngine from "../instagramEngine.js";
+import type * as logs from "../logs.js";
+import type * as mediaEngine from "../mediaEngine.js";
+import type * as originalityCheck from "../originalityCheck.js";
+import type * as pixabayEngine from "../pixabayEngine.js";
+import type * as policyCheck from "../policyCheck.js";
+import type * as scheduler from "../scheduler.js";
+import type * as seoEngine from "../seoEngine.js";
+import type * as settings from "../settings.js";
+import type * as tasks from "../tasks.js";
+import type * as videoPipeline from "../videoPipeline.js";
+import type * as youtubeAutomation from "../youtubeAutomation.js";
+import type * as youtubeEngine from "../youtubeEngine.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
-import type * as contents from "../contents.js";
-import type * as tasks from "../tasks.js";
-import type * as settings from "../settings.js";
-import type * as logs from "../logs.js";
-import type * as generateContent from "../generateContent.js";
-import type * as aiEngine from "../aiEngine.js";
-import type * as seoEngine from "../seoEngine.js";
-import type * as instagramEngine from "../instagramEngine.js";
-import type * as youtubeEngine from "../youtubeEngine.js";
-import type * as youtubeAutomation from "../youtubeAutomation.js";
-import type * as pixabayEngine from "../pixabayEngine.js";
-import type * as videoPipeline from "../videoPipeline.js";
-import type * as scheduler from "../scheduler.js";
-import type * as policyCheck from "../policyCheck.js";
-import type * as originalityCheck from "../originalityCheck.js";
 
 declare const fullApi: ApiFromModules<{
-  contents: typeof contents;
-  tasks: typeof tasks;
-  settings: typeof settings;
-  logs: typeof logs;
-  generateContent: typeof generateContent;
   aiEngine: typeof aiEngine;
-  seoEngine: typeof seoEngine;
+  auth: typeof auth;
+  connections: typeof connections;
+  contentQueue: typeof contentQueue;
+  contents: typeof contents;
+  generateContent: typeof generateContent;
+  helpers: typeof helpers;
+  instagramConnection: typeof instagramConnection;
   instagramEngine: typeof instagramEngine;
-  youtubeEngine: typeof youtubeEngine;
-  youtubeAutomation: typeof youtubeAutomation;
-  pixabayEngine: typeof pixabayEngine;
-  videoPipeline: typeof videoPipeline;
-  scheduler: typeof scheduler;
-  policyCheck: typeof policyCheck;
+  logs: typeof logs;
+  mediaEngine: typeof mediaEngine;
   originalityCheck: typeof originalityCheck;
+  pixabayEngine: typeof pixabayEngine;
+  policyCheck: typeof policyCheck;
+  scheduler: typeof scheduler;
+  seoEngine: typeof seoEngine;
+  settings: typeof settings;
+  tasks: typeof tasks;
+  videoPipeline: typeof videoPipeline;
+  youtubeAutomation: typeof youtubeAutomation;
+  youtubeEngine: typeof youtubeEngine;
 }>;
 
+/**
+ * A utility for referencing Convex functions in your app's public API.
+ */
 export declare const api: FilterApi<
   typeof fullApi,
   FunctionReference<any, "public">
 >;
+
+/**
+ * A utility for referencing Convex functions in your app's internal API.
+ */
 export declare const internal: FilterApi<
   typeof fullApi,
   FunctionReference<any, "internal">
 >;
+
+export declare const components: {};

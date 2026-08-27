@@ -50,7 +50,7 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {contents.map((item) => (
+          {contents.map((item: any) => (
             <div key={item._id} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center justify-between">
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 <div className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>

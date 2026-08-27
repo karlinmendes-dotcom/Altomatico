@@ -1,7 +1,7 @@
 "use client"
 import React from 'react'
-import { Home, Instagram, Youtube, Settings, BarChart3, Calendar, Link2 } from 'lucide-react'
-import { usePathname } from 'next/navigation'
+import { Home, Instagram, Youtube, Music, Settings, BarChart3, Calendar, Link2, LogOut } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 function SideNav() {
@@ -23,6 +23,12 @@ function SideNav() {
       icon: Youtube,
       path: '/dashboard/youtube',
       color: 'text-red-500',
+    },
+    {
+      name: 'TikTok',
+      icon: Music,
+      path: '/dashboard/tiktok',
+      color: 'text-cyan-500',
     },
     {
       name: 'Calendário',
@@ -86,15 +92,25 @@ function SideNav() {
 
       {/* User */}
       <div className='border-t border-white/10 pt-4 px-2'>
-        <div className='flex items-center gap-3'>
+        <div className='flex items-center gap-3 mb-3'>
           <div className='w-9 h-9 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center'>
-            <span className='text-white text-sm font-medium'>K</span>
+            <span className='text-white text-sm font-medium'>U</span>
           </div>
           <div className='flex-1 min-w-0'>
-            <p className='text-sm font-medium truncate'>Karlyn</p>
+            <p className='text-sm font-medium truncate'>Usuário</p>
             <p className='text-xs text-gray-500 truncate'>Plano Gratuito</p>
           </div>
         </div>
+        <button
+          onClick={() => {
+            localStorage.removeItem('altomatico_user');
+            window.location.href = '/sign-in';
+          }}
+          className='w-full flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-red-400 hover:bg-white/5 rounded-lg transition text-sm'
+        >
+          <LogOut className='w-4 h-4' />
+          <span>Sair</span>
+        </button>
       </div>
     </div>
   )

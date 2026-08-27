@@ -155,7 +155,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className='space-y-3'>
-            {recentContents.map(item => (
+            {recentContents.map((item: any) => (
               <div key={item._id} className='flex items-center justify-between p-3 bg-gray-50 rounded-lg'>
                 <div className='flex items-center gap-3'>
                   <span className='text-lg'>{item.platform === 'youtube' ? '🎬' : '📸'}</span>

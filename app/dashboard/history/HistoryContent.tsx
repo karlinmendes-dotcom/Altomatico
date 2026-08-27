@@ -21,7 +21,7 @@ const HistoryContent = () => {
         <div>Data</div>
         <div>Copiar</div>
       </div>
-      {contents.map((item) => (
+      {contents.map((item: any) => (
         <div key={item._id} className="grid grid-cols-1 md:grid-cols-5 gap-4 p-3 border-b">
           <div className="truncate font-medium">{item.title}</div>
           <div>{item.platform === 'youtube' ? '🎬 YouTube' : '📸 Instagram'}</div>

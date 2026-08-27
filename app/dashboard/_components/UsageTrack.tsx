@@ -6,7 +6,7 @@ import { TotalUsageContext } from '@/app/(context)/TotalUsageContext'
 
 function UsageTrack() {
   const context = useContext(TotalUsageContext);
-  const contents = useQuery(api.contents.listAll) ?? [];
+  const contents = (useQuery(api.contents.listAll) ?? []) as any[];
 
   if (!context) {
     throw new Error('UsageTrack must be used within a TotalUsageContext.Provider');

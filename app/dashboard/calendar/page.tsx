@@ -38,7 +38,7 @@ export default function CalendarPage() {
   }
 
   const getEventsForDay = (day: number) => {
-    return events.filter(event => {
+    return events.filter((event: any) => {
       const eventDate = new Date(event.date)
       return eventDate.getDate() === day &&
              eventDate.getMonth() === month &&
@@ -137,7 +137,7 @@ export default function CalendarPage() {
                 </div>
 
                 <div className='space-y-1'>
-                  {dayEvents.slice(0, 3).map(event => {
+                  {dayEvents.slice(0, 3).map((event: any) => {
                     const config = statusConfig[event.status] || statusConfig.idea
                     return (
                       <div
@@ -169,14 +169,14 @@ export default function CalendarPage() {
       </div>
 
       {/* Upcoming Scheduled */}
-      {events.filter(e => e.status === 'scheduled').length > 0 && (
+      {events.filter((e: any) => e.status === 'scheduled').length > 0 && (
         <div className='mt-8 bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
           <h3 className='text-lg font-bold text-gray-900 mb-4'>⏰ Agendados</h3>
           <div className='space-y-3'>
             {events
-              .filter(e => e.status === 'scheduled')
-              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-              .map(event => (
+              .filter((e: any) => e.status === 'scheduled')
+              .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .map((event: any) => (
                 <div key={event.id} className='flex items-center justify-between p-3 bg-blue-50 rounded-lg'>
                   <div className='flex items-center gap-3'>
                     <Clock className='w-4 h-4 text-blue-500' />

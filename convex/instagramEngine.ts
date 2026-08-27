@@ -324,6 +324,198 @@ export const fullInstagramPipeline = action({
   },
 });
 
+// ─── INSTAGRAM OAUTH — URL de Autorização ────────────────────
+
+export const getInstagramAuthUrl = action({
+  args: {
+    redirectUri: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const appId = process.env.FACEBOOK_APP_ID;
+    if (!appId) throw new Error("FACEBOOK_APP_ID não configurada no servidor");
+
+    const scopes = [
+      "instagram_basic",
+      "instagram_content_publish",
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_manage_posts",
+    ].join(",");
+
+    const authUrl =
+      `https://www.facebook.com/v19.0/dialog/oauth` +
+      `?client_id=${appId}` +
+      `&redirect_uri=${encodeURIComponent(args.redirectUri)}` +
+      `&scope=${encodeURIComponent(scopes)}` +
+      `&response_type=code` +
+      `&state=altomatico_ig`; // CSRF protection
+
+    return { authUrl };
+  },
+});
+
+// ─── INSTAGRAM PUBLISH — Publicar via Graph API ──────────────
+
+export const publishToInstagram = action({
+  args: {
+    accessToken: v.string(),
+    instagramAccountId: v.string(),
+    imageUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
+    caption: v.string(),
+    mediaType: v.optional(v.union(
+      v.literal("IMAGE"),
+      v.literal("VIDEO"),
+      v.literal("CAROUSEL_ALBUM"),
+      v.literal("REELS")
+    )),
+  },
+  handler: async (_ctx, args) => {
+    const mediaType = args.mediaType || "IMAGE";
+    const token = args.accessToken;
+    const igAccountId = args.instagramAccountId;
+
+    // Passo 1: Criar container de mídia
+    let containerUrl = `https://graph.facebook.com/v19.0/${igAccountId}/media`;
+    const containerBody: Record<string, string> = {
+      access_token: token,
+      caption: args.caption,
+    };
+
+    if (mediaType === "IMAGE" || mediaType === "REELS") {
+      if (!args.imageUrl && !args.videoUrl) {
+        throw new Error("URL da imagem ou vídeo é obrigatória");
+      }
+      containerBody.image_url = args.imageUrl || args.videoUrl || "";
+    }
+
+    if (mediaType === "VIDEO" || mediaType === "REELS") {
+      if (!args.videoUrl) {
+        throw new Error("URL do vídeo é obrigatória");
+      }
+      containerBody.media_type = "REELS";
+      containerBody.video_url = args.videoUrl;
+    }
+
+    const containerRes = await fetch(containerUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(containerBody),
+    });
+
+    if (!containerRes.ok) {
+      const err = await containerRes.text();
+      throw new Error(`Erro ao criar container: ${err}`);
+    }
+
+    const containerData = await containerRes.json();
+    const containerId = containerData.id;
+
+    // Passo 2: Verificar processamento (aguardar até 60s)
+    let status = "INITIATED";
+    let attempts = 0;
+    while (status !== "FINISHED" && attempts < 12) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const statusRes = await fetch(
+        `https://graph.facebook.com/v19.0/${containerId}?fields=status_code&access_token=${token}`
+      );
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        status = statusData.status_code || "INITIATED";
+      }
+      attempts++;
+    }
+
+    if (status !== "FINISHED") {
+      throw new Error(`Container não processou a tempo. Status: ${status}`);
+    }
+
+    // Passo 3: Publicar
+    const publishRes = await fetch(
+      `https://graph.facebook.com/v19.0/${igAccountId}/media_publish`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creation_id: containerId,
+          access_token: token,
+        }),
+      }
+    );
+
+    if (!publishRes.ok) {
+      const err = await publishRes.text();
+      throw new Error(`Erro ao publicar: ${err}`);
+    }
+
+    const publishData = await publishRes.json();
+    return {
+      success: true,
+      mediaId: publishData.id,
+      containerId,
+      message: "Publicado no Instagram com sucesso!",
+    };
+  },
+});
+
+// ─── INSTAGRAM ANALYTICS — Métricas da publicação ────────────
+
+export const getMediaInsights = action({
+  args: {
+    accessToken: v.string(),
+    mediaId: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${args.mediaId}?fields=like_count,comments_count,shares,save_count,impressions,reach&access_token=${args.accessToken}`
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Erro ao buscar insights: ${err}`);
+    }
+
+    const data = await res.json();
+    return {
+      likes: data.like_count || 0,
+      comments: data.comments_count || 0,
+      shares: data.shares || 0,
+      saves: data.save_count || 0,
+      impressions: data.impressions || 0,
+      reach: data.reach || 0,
+    };
+  },
+});
+
+// ─── INSTAGRAM INFO — Dados da conta ─────────────────────────
+
+export const getInstagramAccountInfo = action({
+  args: {
+    accessToken: v.string(),
+    instagramAccountId: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${args.instagramAccountId}?fields=username,name,biography,followers_count,media_count,profile_picture_url&access_token=${args.accessToken}`
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Erro ao buscar dados da conta: ${err}`);
+    }
+
+    const data = await res.json();
+    return {
+      username: data.username || "",
+      name: data.name || "",
+      biography: data.biography || "",
+      followers: data.followers_count || 0,
+      mediaCount: data.media_count || 0,
+      profilePicture: data.profile_picture_url || "",
+    };
+  },
+});
+
 // ─── Funções auxiliares ──────────────────────────────────────
 
 async function callGemini(apiKey: string, prompt: string, maxTokens: number): Promise<string> {

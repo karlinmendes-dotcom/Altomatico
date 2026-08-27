@@ -186,16 +186,11 @@ export default defineSchema({
     youtubeChannelId: v.optional(v.string()),
     youtubeChannelName: v.optional(v.string()),
     youtubeConnected: v.optional(v.boolean()),
-    youtubeAccessToken: v.optional(v.string()),
-    youtubeRefreshToken: v.optional(v.string()),
-    youtubeTokenExpiry: v.optional(v.string()),
 
     // Instagram
     instagramAccountId: v.optional(v.string()),
     instagramUsername: v.optional(v.string()),
     instagramConnected: v.optional(v.boolean()),
-    instagramAccessToken: v.optional(v.string()),
-    instagramTokenExpiry: v.optional(v.string()),
 
     // Marca / Identidade
     brandName: v.optional(v.string()),
@@ -337,4 +332,93 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_category", ["category"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONEXÕES — Credenciais de plataformas
+  // ═══════════════════════════════════════════════════════════════
+  connections: defineTable({
+    userId: v.string(),
+    platform: v.union(
+      v.literal("youtube"),
+      v.literal("instagram"),
+      v.literal("tiktok")
+    ),
+    youtubeAccessToken: v.optional(v.string()),
+    youtubeRefreshToken: v.optional(v.string()),
+    youtubeTokenExpiresAt: v.optional(v.number()),
+    youtubeChannelId: v.optional(v.string()),
+    youtubeChannelName: v.optional(v.string()),
+    youtubeChannelThumbnail: v.optional(v.string()),
+    instagramAccessToken: v.optional(v.string()),
+    instagramTokenExpiresAt: v.optional(v.number()),
+    facebookPageId: v.optional(v.string()),
+    instagramAccountId: v.optional(v.string()),
+    instagramUsername: v.optional(v.string()),
+    tiktokAccessToken: v.optional(v.string()),
+    tiktokRefreshToken: v.optional(v.string()),
+    tiktokTokenExpiresAt: v.optional(v.number()),
+    tiktokOpenId: v.optional(v.string()),
+    tiktokCreatorUsername: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_platform", ["userId", "platform"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // FILA DE CONTEÚDO — Postagens rápidas
+  // ═══════════════════════════════════════════════════════════════
+  contentQueue: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    platform: v.union(
+      v.literal("youtube"),
+      v.literal("instagram"),
+      v.literal("tiktok"),
+      v.literal("multi")
+    ),
+    contentType: v.union(
+      v.literal("short"),
+      v.literal("reel"),
+      v.literal("post"),
+      v.literal("carousel"),
+      v.literal("long_video")
+    ),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("ai_generating"),
+      v.literal("ready"),
+      v.literal("scheduled"),
+      v.literal("publishing"),
+      v.literal("published"),
+      v.literal("failed")
+    ),
+    source: v.union(
+      v.literal("ai_generated"),
+      v.literal("youtube_cut"),
+      v.literal("manual")
+    ),
+    aiPrompt: v.optional(v.string()),
+    aiScript: v.optional(v.string()),
+    aiNarration: v.optional(v.string()),
+    aiHashtags: v.optional(v.array(v.string())),
+    aiThumbnailUrl: v.optional(v.string()),
+    videoUrl: v.optional(v.string()),
+    thumbnailUrl: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    youtubeVideoId: v.optional(v.string()),
+    instagramContainerId: v.optional(v.string()),
+    tiktokPublishId: v.optional(v.string()),
+    scheduledAt: v.optional(v.number()),
+    publishedAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    retryCount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_status", ["userId", "status"])
+    .index("by_userId_platform", ["userId", "platform"]),
 });
