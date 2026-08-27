@@ -34,6 +34,7 @@ export const create = mutation({
     videoUrl: v.optional(v.string()),
     thumbnailUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    mediaUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -66,6 +67,7 @@ export const updateStatus = mutation({
     youtubeVideoId: v.optional(v.string()),
     instagramContainerId: v.optional(v.string()),
     tiktokPublishId: v.optional(v.string()),
+    mediaUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -79,6 +81,7 @@ export const updateStatus = mutation({
     if (args.youtubeVideoId) updates.youtubeVideoId = args.youtubeVideoId;
     if (args.instagramContainerId) updates.instagramContainerId = args.instagramContainerId;
     if (args.tiktokPublishId) updates.tiktokPublishId = args.tiktokPublishId;
+    if (args.mediaUrl) updates.mediaUrl = args.mediaUrl;
     await ctx.db.patch(args.queueId, updates);
   },
 });

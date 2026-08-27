@@ -229,7 +229,7 @@ export default defineSchema({
   // ═══════════════════════════════════════════════════════════════
   analytics: defineTable({
     contentId: v.id("contents"),
-    platform: v.union(v.literal("youtube"), v.literal("instagram")),
+    platform: v.union(v.literal("youtube"), v.literal("instagram"), v.literal("tiktok")),
     externalId: v.optional(v.string()), // ID na plataforma
 
     // Métricas
@@ -419,6 +419,7 @@ export default defineSchema({
     videoUrl: v.optional(v.string()),
     thumbnailUrl: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    mediaUrl: v.optional(v.string()), // URL da mídia processada (vídeo/imagem)
     youtubeVideoId: v.optional(v.string()),
     instagramContainerId: v.optional(v.string()),
     tiktokPublishId: v.optional(v.string()),
