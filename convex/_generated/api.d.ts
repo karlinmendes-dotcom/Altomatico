@@ -9,6 +9,8 @@
  */
 
 import type * as aiEngine from "../aiEngine.js";
+import type * as channelConfig from "../channelConfig.js";
+import type * as cronRunner from "../cronRunner.js";
 import type * as auth from "../auth.js";
 import type * as connections from "../connections.js";
 import type * as contentQueue from "../contentQueue.js";
@@ -40,6 +42,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   aiEngine: typeof aiEngine;
+  channelConfig: typeof channelConfig;
+  cronRunner: typeof cronRunner;
   auth: typeof auth;
   connections: typeof connections;
   contentQueue: typeof contentQueue;

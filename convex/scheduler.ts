@@ -171,12 +171,13 @@ export const processChannelCron = action({
     connectionId: v.id("connections"),
   },
   handler: async (ctx, args) => {
-    // Buscar a conexão
+    // 1. Buscar configuração do canal
     const connRaw = await ctx.runQuery("channelConfig:getChannelConfig" as never, {
       connectionId: args.connectionId,
     } as never);
     if (!connRaw) throw new Error("Conexão não encontrada");
     const conn = connRaw as unknown as {
+      connectionId: string;
       platform: string;
       niche: string;
       systemPrompt: string;
@@ -187,85 +188,53 @@ export const processChannelCron = action({
 
     const { platform, niche, systemPrompt, mode, targetUrl } = conn;
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY não configurada");
+    // 2. Chamar a action de IA para gerar conteúdo
+    const aiResult = await ctx.runAction("aiEngine:generateContentWithGemini" as never, {
+      niche,
+      systemPrompt: systemPrompt || undefined,
+      mode: mode as "AUTO_GENERATED" | "URL_CLIPS",
+      targetUrl: targetUrl || undefined,
+      platform: platform as "youtube" | "instagram" | "tiktok" | "multi",
+    } as never);
 
-    const prompt = `Você é um criador de conteúdo profissional para ${platform}.
+    const result = aiResult as unknown as {
+      title: string;
+      script: string;
+      caption: string;
+      hashtags: string[];
+      visualConcept: string;
+      musicSuggestion: string;
+      duration: string;
+    };
 
-Nicho: ${niche}
-${systemPrompt ? `Instruções personalizadas: ${systemPrompt}` : ""}
-
-Gere um roteiro curto para um post ${platform === "youtube" ? "YouTube" : platform === "instagram" ? "Instagram" : "TikTok"}:
-
-1. Título chamativo (máx 60 caracteres)
-2. Roteiro cena a cena (máx 30 segundos)
-3. Legenda com hashtags (8-12 tags relevantes ao nicho)
-4. Conceito visual (descrição do que aparece na tela)
-5. Melhor horário para postar
-
-Responda EXATAMENTE neste formato JSON (sem markdown):
-{
-  "title": "título do post",
-  "script": "roteiro completo",
-  "caption": "legenda com emojis e quebras de linha",
-  "hashtags": ["#tag1", "#tag2", ...],
-  "visualConcept": "descrição visual",
-  "bestTime": "horário sugerido",
-  "hook": "gancho dos primeiros 3 segundos",
-  "duration": "duração sugerida"
-}`;
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 2048 },
-        }),
-      }
-    );
-
-    if (!response.ok) throw new Error("Erro na API Gemini");
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    let generated: Record<string, unknown>;
-    try {
-      generated = JSON.parse(cleaned);
-    } catch {
-      generated = { title: "Conteúdo automático", script: text, caption: "", hashtags: [], visualConcept: "", bestTime: "12:00", hook: "", duration: "30s" };
-    }
-
-    // Criar item na fila como DRAFT (nunca publicado automaticamente)
+    // 3. Criar item na fila como DRAFT (nunca publicado automaticamente)
     const now = Date.now();
     const contentType = platform === "youtube" ? "long_video" as const : platform === "instagram" ? "reel" as const : "short" as const;
     const queueId = await ctx.runMutation("contentQueue:create" as never, {
       userId: "default",
-      title: (generated.title as string) || "Conteúdo automático",
-      description: (generated.script as string) || "",
+      title: result.title || "Conteúdo automático",
+      description: result.script || "",
       platform: platform as "youtube" | "instagram" | "tiktok",
       contentType,
       source: mode === "URL_CLIPS" ? "youtube_cut" as const : "ai_generated" as const,
       aiPrompt: systemPrompt || `Nicho: ${niche}`,
-      aiScript: (generated.script as string) || "",
-      aiHashtags: (generated.hashtags as string[]) || [],
-      status: "draft", // SEMPRE como rascunho
+      aiScript: result.script || "",
+      aiHashtags: result.hashtags || [],
+      status: "draft",
       retryCount: 0,
       createdAt: now,
       updatedAt: now,
     } as never);
 
-    // Atualizar último run do cron
+    // 4. Atualizar último run do cron
     await ctx.runMutation("channelConfig:markCronRun" as never, {
       connectionId: args.connectionId,
     } as never);
 
-    // Log
+    // 5. Log
     await ctx.runMutation("logs:create" as never, {
       action: "cron_content_generated",
-      details: `Canal ${platform}#${args.connectionId} — Conteúdo gerado: ${(generated.title as string) || "Sem título"}`,
+      details: `Canal ${platform}#${args.connectionId} — ${result.title}`,
       level: "info",
       source: "scheduler_cron",
       success: true,
@@ -275,7 +244,7 @@ Responda EXATAMENTE neste formato JSON (sem markdown):
     return {
       success: true,
       queueId,
-      title: generated.title,
+      title: result.title,
       mode,
       note: "Conteúdo criado como RASCUNHO. Nada foi publicado automaticamente.",
     };

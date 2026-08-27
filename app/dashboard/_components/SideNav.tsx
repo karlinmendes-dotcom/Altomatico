@@ -1,6 +1,6 @@
 "use client"
 import React, { useState, useEffect } from 'react'
-import { Home, Instagram, Youtube, Music, Settings, BarChart3, Calendar, Link2, LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { Home, Instagram, Youtube, Music, Settings, BarChart3, Calendar, Link2, LogOut, Menu, X, ChevronRight, FileText } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -27,6 +27,7 @@ function SideNav() {
     { name: 'TikTok', icon: Music, path: '/dashboard/tiktok', color: 'text-cyan-500', bg: 'bg-cyan-500' },
     { name: 'Calendário', icon: Calendar, path: '/dashboard/calendar', color: 'text-blue-500', bg: 'bg-blue-500' },
     { name: 'Histórico', icon: BarChart3, path: '/dashboard/history', color: 'text-green-500', bg: 'bg-green-500' },
+    { name: 'Rascunhos', icon: FileText, path: '/dashboard/queue', color: 'text-amber-500', bg: 'bg-amber-500' },
     { name: 'Conexões', icon: Link2, path: '/dashboard/connections', color: 'text-emerald-500', bg: 'bg-emerald-500' },
     { name: 'Configurações', icon: Settings, path: '/dashboard/settings', color: 'text-gray-400', bg: 'bg-gray-500' },
   ]

@@ -271,6 +271,78 @@ export const searchMusic = action({
   },
 });
 
+// ─── Processamento de URL_CLIPS ─────────────────────────────
+// Extração e processamento de trechos de vídeos existentes
+
+export const processUrlClip = action({
+  args: {
+    queueId: v.string(),
+    targetUrl: v.string(),
+    duration: v.optional(v.string()), // "15s", "30s", "60s"
+    orientation: v.optional(v.union(
+      v.literal("portrait"),
+      v.literal("landscape")
+    )),
+  },
+  handler: async (_ctx, args) => {
+    // 1. Validar URL
+    const isYouTube = args.targetUrl.includes("youtube.com") || args.targetUrl.includes("youtu.be");
+    const isTikTok = args.targetUrl.includes("tiktok.com");
+    const isInstagram = args.targetUrl.includes("instagram.com");
+    const isTwitch = args.targetUrl.includes("twitch.tv");
+
+    if (!isYouTube && !isTikTok && !isInstagram && !isTwitch) {
+      throw new Error("URL não suportada. Use URLs do YouTube, TikTok, Instagram ou Twitch.");
+    }
+
+    // 2. Placeholder: Em produção, aqui seria integrado com:
+    //    - yt-dlp para download do vídeo
+    //    - ffmpeg para extração do trecho
+    //    - Conversão para formato vertical (9:16)
+    //    - Upload para armazenamento temporário
+    //
+    // Por agora, retornamos instruções de processamento
+
+    const platform = isYouTube ? "YouTube" : isTikTok ? "TikTok" : isInstagram ? "Instagram" : "Twitch";
+    const duration = args.duration || "30s";
+    const orient = args.orientation || "portrait";
+
+    return {
+      queueId: args.queueId,
+      targetUrl: args.targetUrl,
+      platform,
+      duration,
+      orientation: orient,
+      status: "processing",
+      message: `Processamento de clip de ${platform} iniciado. Duração: ${duration}. Orientação: ${orient}.`,
+      pipeline: [
+        "1. Download do vídeo fonte",
+        `2. Extração de trecho de ${duration}`,
+        "3. Conversão para formato vertical (9:16)",
+        "4. Otimização de qualidade",
+        "5. Upload para armazenamento",
+      ],
+      note: "Este é um placeholder da pipeline. Em produção, integrar com yt-dlp + ffmpeg.",
+    };
+  },
+});
+
+// ─── Processar fila de clips ─────────────────────────────────
+// Chamado pelo cron para itens com source='youtube_cut'
+
+export const processClipQueue = action({
+  args: {},
+  handler: async (_ctx) => {
+    // Em produção, buscaria itens da contentQueue com source='youtube_cut'
+    // e processaria cada um sequencialmente
+    return {
+      processed: 0,
+      message: "Pipeline de clips em modo placeholder",
+      note: "Integrar com mediaEngine.processUrlClip para processamento real",
+    };
+  },
+});
+
 // ─── Síntese de voz (Edge TTS) ──────────────────────────────
 
 export const generateVoice = action({

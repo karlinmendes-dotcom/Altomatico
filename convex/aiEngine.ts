@@ -325,6 +325,129 @@ Responda EXATAMENTE neste formato JSON (sem markdown):
   },
 });
 
+// ─── generateContentWithGemini — Geração end-to-end para cron ──
+
+export const generateContentWithGemini = action({
+  args: {
+    niche: v.string(),
+    systemPrompt: v.optional(v.string()),
+    mode: v.union(v.literal("AUTO_GENERATED"), v.literal("URL_CLIPS")),
+    targetUrl: v.optional(v.string()),
+    platform: v.optional(v.union(v.literal("youtube"), v.literal("instagram"), v.literal("tiktok"), v.literal("multi"))),
+  },
+  handler: async (_ctx, args) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY não configurada no servidor");
+
+    const platformLabel = args.platform === "youtube" ? "YouTube" : args.platform === "instagram" ? "Instagram" : args.platform === "tiktok" ? "TikTok" : "redes sociais";
+
+    let prompt: string;
+
+    if (args.mode === "URL_CLIPS") {
+      // ─── MODO URL_CLIPS: Gerar conteúdo baseado em URL ───
+      prompt = `Você é um criador de conteúdo viral especializado em ${platformLabel}.
+
+Nicho: ${args.niche}
+${args.systemPrompt ? `Instruções personalizadas: ${args.systemPrompt}` : ""}
+URL de referência: ${args.targetUrl || "(não fornecida)"}
+
+Com base no contexto da URL fornecida, gere um conteúdo para recorte/clip:
+1. Um título chamativo (máx 60 caracteres)
+2. Um gancho/hook irresistível (primeiros 3 segundos)
+3. Um roteiro curto cena a cena (15-30 segundos)
+4. Uma legenda completa com emojis
+5. 10 hashtags estratégicas relevantes ao nicho
+6. Direção visual (o que aparece na tela)
+7. Sugestão de música/mood sonoro
+
+O conteúdo deve ser adaptado para ser um clip curto e viral.
+
+Responda EXATAMENTE neste formato JSON (sem markdown):
+{
+  "title": "título chamativo",
+  "hook": "gancho dos primeiros 3 segundos",
+  "script": "roteiro cena a cena",
+  "caption": "legenda completa com emojis e quebras de linha",
+  "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5", "#tag6", "#tag7", "#tag8", "#tag9", "#tag10"],
+  "visualConcept": "direção visual descritiva",
+  "musicSuggestion": "música ou mood sugerido",
+  "duration": "15-30s",
+  "bestTime": "horário sugerido para postar"
+}`;
+    } else {
+      // ─── MODO AUTO_GENERATED: Geração do zero ───
+      prompt = `Você é um criador de conteúdo profissional e viral para ${platformLabel}.
+
+Nicho: ${args.niche}
+${args.systemPrompt ? `Instruções personalizadas do canal:
+${args.systemPrompt}` : "Crie conteúdo envolvente e de alta qualidade para este nicho."}
+
+Gere um conteúdo COMPLETO para postagem automática:
+
+1. Título otimizado para SEO (máx 60 caracteres)
+2. Gancho/Hook irresistível (primeiros 3 segundos do vídeo ou primeira linha do post)
+3. Roteiro completo cena a cena (desenvolvimento, 15-60 segundos)
+4. CTA forte no final (chamada para ação)
+5. Legenda completa para a rede social (com emojis, quebras de linha, tom do nicho)
+6. 10 hashtags estratégicas (mistura de broad, medium e niche)
+7. Conceito visual detalhado (o que aparece na tela em cada cena)
+8. Sugestão de trilha sonora/mood
+9. Melhor horário para postar
+10. Duração sugerida
+
+IMPORTANTE:
+- Tudo em português brasileiro
+- Tom Natural: não pareça robô
+- Hashtags devem ser relevantes ao nicho: ${args.niche}
+- Legenda deve ter entre 100-500 caracteres
+- O roteiro deve ser envolvente do início ao fim
+
+Responda EXATAMENTE neste formato JSON (sem markdown):
+{
+  "title": "título otimizado",
+  "hook": "gancho dos primeiros 3 segundos",
+  "script": "roteiro completo cena a cena",
+  "cta": "chamada para ação no final",
+  "caption": "legenda completa formatada com emojis e quebras de linha",
+  "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5", "#tag6", "#tag7", "#tag8", "#tag9", "#tag10"],
+  "visualConcept": "direção visual cena a cena",
+  "musicSuggestion": "música ou mood sugerido",
+  "duration": "duração sugerida",
+  "bestTime": "melhor horário para postar"
+}`;
+    }
+
+    const result = await callGemini(apiKey, prompt, 3072);
+    const parsed = parseJSON(result, {
+      title: "Conteúdo gerado",
+      hook: "",
+      script: result,
+      cta: "",
+      caption: "",
+      hashtags: [] as string[],
+      visualConcept: "",
+      musicSuggestion: "",
+      duration: "30s",
+      bestTime: "12:00",
+    });
+
+    return {
+      title: parsed.title,
+      hook: parsed.hook,
+      script: parsed.script,
+      cta: (parsed as Record<string, unknown>).cta as string || "",
+      caption: parsed.caption,
+      hashtags: parsed.hashtags,
+      visualConcept: parsed.visualConcept,
+      musicSuggestion: parsed.musicSuggestion,
+      duration: parsed.duration,
+      bestTime: parsed.bestTime,
+      mode: args.mode,
+      niche: args.niche,
+    };
+  },
+});
+
 // ─── Funções auxiliares ──────────────────────────────────────
 
 async function callGemini(apiKey: string, prompt: string, maxTokens: number): Promise<string> {
