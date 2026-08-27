@@ -1,11 +1,8 @@
 'use client'
 import React, { useState } from 'react'
-import { Music, Loader2, Scissors, FileText, Upload, AlertCircle, ChevronRight, Zap, Play, Copy, CheckCircle, Clock } from 'lucide-react'
+import { Music, Loader2, Scissors, FileText, Upload, AlertCircle, ChevronRight, Zap, Play, Copy, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { useAction, useQuery } from 'convex/react'
-import { api } from '../../../convex/_generated/api'
 
 type AgentStep = 'idle' | 'agent1' | 'agent2' | 'agent3' | 'done'
 
@@ -33,7 +30,6 @@ interface TiktokClip {
 
 export default function TiktokPage() {
   const [topic, setTopic] = useState('')
-  const [channelNiche, setChannelNiche] = useState('')
   const [brandName, setBrandName] = useState('')
   const [targetAudience, setTargetAudience] = useState('')
   const [duration, setDuration] = useState('15-30')
@@ -44,10 +40,6 @@ export default function TiktokPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [agentLogs, setAgentLogs] = useState<string[]>([])
-
-  const apiAny = api as any
-  const tiktokStatus = useQuery(apiAny.tiktokEngine.getTiktokStatus)
-  const publishVideo = useAction(apiAny.tiktokEngine.publishVideo)
 
   const addLog = (msg: string) => setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`])
 
@@ -106,7 +98,6 @@ export default function TiktokPage() {
 
       setCurrentStep('agent2')
       addLog('✂️ AGENTE 2 — Editor de Conteúdo iniciado...')
-
       await new Promise(resolve => setTimeout(resolve, 2000))
 
       const firstClip = generatedClips[0]
@@ -126,11 +117,9 @@ export default function TiktokPage() {
 
       setCurrentStep('agent3')
       addLog('📤 AGENTE 3 — Publicador TikTok iniciado...')
-
       await new Promise(resolve => setTimeout(resolve, 1500))
-
-      addLog(`✅ Agente 3 concluído! Payload pronto para upload`)
-      addLog('🎉 PIPELINE COMPLETO! Vídeo pronto para publicação no TikTok.')
+      addLog(`✅ Agente 3 concluído! Payload pronto`)
+      addLog('🎉 PIPELINE COMPLETO!')
 
       setCurrentStep('done')
     } catch (err) {
@@ -141,52 +130,26 @@ export default function TiktokPage() {
     }
   }
 
-  const handlePublish = async () => {
-    if (!script || !tiktokStatus?.connected) return
-    setLoading(true)
-    try {
-      await publishVideo({
-        videoUrl: '',
-        title: topic,
-        description: script.caption,
-      })
-      addLog(`✅ Vídeo publicado no TikTok!`)
-      alert('Vídeo publicado com sucesso!')
-    } catch (err) {
-      addLog(`❌ Erro ao publicar: ${err}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <div className='min-h-screen bg-gray-50 p-6 md:p-10'>
+    <div className='min-h-screen bg-gray-50 p-4 md:p-8 lg:p-10'>
       {/* Header */}
-      <div className='flex items-center justify-between mb-8'>
-        <div className='flex items-center gap-3'>
-          <div className='w-12 h-12 bg-gradient-to-br from-cyan-400 to-pink-500 rounded-xl flex items-center justify-center'>
-            <Music className='w-6 h-6 text-white' />
-          </div>
-          <div>
-            <h1 className='text-2xl font-bold text-gray-900'>TikTok Automation</h1>
-            <p className='text-gray-500 text-sm'>3 Agentes IA: Roteiro → Edição → Publicação</p>
-          </div>
+      <div className='flex items-center gap-3 mb-6 md:mb-8'>
+        <div className='w-12 h-12 bg-gradient-to-br from-cyan-400 to-pink-500 rounded-xl flex items-center justify-center'>
+          <Music className='w-6 h-6 text-white' />
         </div>
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
-          tiktokStatus?.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-        }`}>
-          {tiktokStatus?.connected ? <CheckCircle className='w-3.5 h-3.5' /> : <AlertCircle className='w-3.5 h-3.5' />}
-          {tiktokStatus?.connected ? `@${tiktokStatus.username}` : 'Desconectado'}
+        <div>
+          <h1 className='text-xl md:text-2xl font-bold text-gray-900'>TikTok Automation</h1>
+          <p className='text-gray-500 text-xs md:text-sm'>3 Agentes IA: Roteiro → Edição → Publicação</p>
         </div>
       </div>
 
       {/* Pipeline Visual */}
-      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6'>
-        <div className='flex items-center gap-3 overflow-x-auto pb-2'>
+      <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-3 md:p-4 mb-4 md:mb-6'>
+        <div className='flex items-center gap-2 md:gap-3 overflow-x-auto pb-2'>
           {[
-            { step: 'agent1', label: 'Roteirista', icon: <FileText className='w-4 h-4' />, color: 'cyan' },
-            { step: 'agent2', label: 'Editor', icon: <Scissors className='w-4 h-4' />, color: 'pink' },
-            { step: 'agent3', label: 'Publicador', icon: <Upload className='w-4 h-4' />, color: 'purple' },
+            { step: 'agent1', label: 'Roteirista', color: 'cyan' },
+            { step: 'agent2', label: 'Editor', color: 'pink' },
+            { step: 'agent3', label: 'Publicador', color: 'purple' },
           ].map((s, i) => {
             const stepOrder = ['agent1', 'agent2', 'agent3', 'done']
             const currentIdx = stepOrder.indexOf(currentStep)
@@ -194,7 +157,7 @@ export default function TiktokPage() {
             const isDone = currentIdx > i
             return (
               <React.Fragment key={s.step}>
-                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
+                <div className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
                   isActive ? `bg-${s.color}-100 text-${s.color}-700 ring-2 ring-${s.color}-300` :
                   isDone ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                 }`}>
@@ -202,7 +165,7 @@ export default function TiktokPage() {
                     isActive ? `bg-${s.color}-500 text-white animate-pulse` :
                     isDone ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'
                   }`}>
-                    {isDone ? '✓' : s.icon}
+                    {isDone ? '✓' : i + 1}
                   </div>
                   {s.label}
                 </div>
@@ -213,10 +176,10 @@ export default function TiktokPage() {
         </div>
       </div>
 
-      <div className='grid lg:grid-cols-3 gap-6'>
+      <div className='grid lg:grid-cols-3 gap-4 md:gap-6'>
         {/* Config + Logs */}
-        <div className='space-y-6'>
-          <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+        <div className='space-y-4 md:space-y-6'>
+          <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-6'>
             <h3 className='font-bold text-gray-900 mb-4 flex items-center gap-2'>
               <Music className='w-5 h-5 text-cyan-500' /> Configuração
             </h3>
@@ -224,10 +187,6 @@ export default function TiktokPage() {
               <div>
                 <label className='block text-xs font-medium text-gray-600 mb-1'>Tema / Assunto</label>
                 <Input placeholder='Ex: 3 fatos surpreendentes' value={topic} onChange={e => setTopic(e.target.value)} />
-              </div>
-              <div>
-                <label className='block text-xs font-medium text-gray-600 mb-1'>Nicho</label>
-                <Input placeholder='Ex: Tecnologia, Humor, Educação' value={channelNiche} onChange={e => setChannelNiche(e.target.value)} />
               </div>
               <div>
                 <label className='block text-xs font-medium text-gray-600 mb-1'>Marca / Perfil</label>
@@ -259,17 +218,15 @@ export default function TiktokPage() {
                 {loading ? (<><Loader2 className='w-5 h-5 animate-spin mr-2' /> Executando pipeline...</>) : (<><Zap className='w-5 h-5 mr-2' /> Executar 3 Agentes IA</>)}
               </Button>
 
-              {!tiktokStatus?.connected && (
-                <p className='text-xs text-amber-600 text-center bg-amber-50 p-2 rounded-lg'>
-                  ⚠️ Conecte seu TikTok em{' '}
-                  <a href='/dashboard/connections' className='underline font-medium'>Conexões</a>
-                </p>
-              )}
+              <p className='text-xs text-amber-600 text-center bg-amber-50 p-2 rounded-lg'>
+                ⚠️ Conecte seu TikTok em{' '}
+                <a href='/dashboard/connections' className='underline font-medium'>Conexões</a>
+              </p>
             </div>
           </div>
 
           {agentLogs.length > 0 && (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-6'>
               <h3 className='font-bold text-gray-900 mb-3 text-sm'>📋 Logs dos Agentes</h3>
               <div className='bg-gray-900 rounded-xl p-4 max-h-60 overflow-y-auto'>
                 {agentLogs.map((log, i) => (<p key={i} className='text-xs text-green-400 font-mono mb-1'>{log}</p>))}
@@ -279,10 +236,10 @@ export default function TiktokPage() {
         </div>
 
         {/* Results */}
-        <div className='lg:col-span-2 space-y-6'>
-          {/* Clips from Agent 1 */}
+        <div className='lg:col-span-2 space-y-4 md:space-y-6'>
+          {/* Clips */}
           {clips.length > 0 && (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-6'>
               <div className='flex items-center gap-2 mb-4'>
                 <div className='w-8 h-8 bg-cyan-100 rounded-full flex items-center justify-center'><FileText className='w-4 h-4 text-cyan-600' /></div>
                 <div>
@@ -295,46 +252,24 @@ export default function TiktokPage() {
                   <div key={i} className={`p-4 rounded-xl border-2 transition cursor-pointer ${selectedClip === i ? 'border-cyan-500 bg-cyan-50' : 'border-gray-100 hover:border-gray-200'}`} onClick={() => setSelectedClip(i)}>
                     <div className='flex items-center justify-between mb-2'>
                       <span className='text-xs font-bold text-gray-400'>#{clip.number}</span>
-                      <span className={`text-xs font-bold ${clip.viralPotential >= 7 ? 'text-green-600' : 'text-yellow-600'}`}>
-                        {clip.viralPotential}/10
-                      </span>
+                      <span className={`text-xs font-bold ${clip.viralPotential >= 7 ? 'text-green-600' : 'text-yellow-600'}`}>{clip.viralPotential}/10</span>
                     </div>
                     <p className='font-semibold text-sm mb-1 line-clamp-2'>{clip.title}</p>
                     <p className='text-xs text-gray-600 mb-2 line-clamp-2'>{clip.hook}</p>
-                    <div className='flex items-center gap-2 text-[10px] text-gray-400'>
-                      <span>🎵 {clip.suggestedMusic}</span>
-                      <span>📱 {clip.format}</span>
-                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Script from Agent 2 */}
+          {/* Script */}
           {script && (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-6'>
               <div className='flex items-center gap-2 mb-4'>
                 <div className='w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center'><Scissors className='w-4 h-4 text-pink-600' /></div>
                 <div>
                   <h3 className='font-bold text-gray-900 text-sm'>Agente 2 — Roteiro & Direção</h3>
                   <p className='text-xs text-gray-500'>Duração: {script.duration}</p>
-                </div>
-              </div>
-
-              {/* TikTok Mock */}
-              <div className='border rounded-xl overflow-hidden mb-4 max-w-[280px] mx-auto'>
-                <div className='aspect-[9/16] bg-gradient-to-br from-cyan-100 to-pink-100 flex items-center justify-center relative'>
-                  <Play className='w-16 h-16 text-cyan-500 opacity-80' />
-                  <div className='absolute bottom-4 left-3 right-3'>
-                    <p className='text-xs font-semibold text-gray-800 mb-1'>@{brandName || 'meuperfil'}</p>
-                    <p className='text-[10px] text-gray-700 line-clamp-3'>{script.caption}</p>
-                    <div className='flex flex-wrap gap-1 mt-2'>
-                      {script.hashtags.slice(0, 4).map((h, i) => (
-                        <span key={i} className='text-[8px] text-cyan-700 font-medium'>{h}</span>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -365,55 +300,36 @@ export default function TiktokPage() {
                 ))}
               </div>
 
-              <Button
-                onClick={() => navigator.clipboard.writeText(script.script + '\n\n' + script.hashtags.join(' '))}
-                variant='outline' className='w-full mb-2'
-              >
+              <Button onClick={() => navigator.clipboard.writeText(script.script + '\n\n' + script.hashtags.join(' '))} variant='outline' className='w-full'>
                 <Copy className='w-4 h-4 mr-2' /> Copiar Roteiro + Hashtags
               </Button>
             </div>
           )}
 
-          {/* Publish from Agent 3 */}
+          {/* Done */}
           {currentStep === 'done' && (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-6'>
               <div className='flex items-center gap-2 mb-4'>
-                <div className='w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center'><Upload className='w-4 h-4 text-purple-600' /></div>
+                <div className='w-8 h-8 bg-green-100 rounded-full flex items-center justify-center'><CheckCircle className='w-4 h-4 text-green-600' /></div>
                 <div>
                   <h3 className='font-bold text-gray-900 text-sm'>Agente 3 — Publicação TikTok</h3>
-                  <p className='text-xs text-gray-500'>Pronto para publicar!</p>
+                  <p className='text-xs text-gray-500'>Pronto!</p>
                 </div>
               </div>
-
-              <div className='bg-green-50 border border-green-200 rounded-xl p-4 mb-4'>
-                <p className='text-sm font-medium text-green-700'>✅ Vídeo pronto para publicação automática</p>
-                <p className='text-xs text-green-600 mt-1'>O sistema vai enviar o vídeo diretamente para sua conta TikTok via Content Posting API.</p>
+              <div className='bg-green-50 border border-green-200 rounded-xl p-4'>
+                <p className='text-sm font-medium text-green-700'>✅ Conteúdo pronto para publicação</p>
+                <p className='text-xs text-green-600 mt-1'>Copie o roteiro acima e publique manualmente no TikTok.</p>
               </div>
-
-              <Button
-                onClick={handlePublish}
-                disabled={!tiktokStatus?.connected || loading}
-                className='w-full bg-gradient-to-r from-cyan-500 to-pink-500 text-white'
-              >
-                {loading ? (
-                  <><Loader2 className='w-4 h-4 animate-spin mr-2' /> Publicando...</>
-                ) : (
-                  <><Upload className='w-4 h-4 mr-2' /> Publicar no TikTok</>
-                )}
-              </Button>
-              {!tiktokStatus?.connected && (
-                <p className='text-xs text-center text-gray-400 mt-2'>Conecte o TikTok em <a href='/dashboard/connections' className='underline'>Conexões</a></p>
-              )}
             </div>
           )}
 
           {/* Empty State */}
           {currentStep === 'idle' && (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center'>
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-8 md:p-12 text-center'>
               <Zap className='w-16 h-16 mx-auto mb-4 text-cyan-300' />
               <h3 className='text-lg font-bold text-gray-900 mb-2'>Pipeline de 3 Agentes TikTok</h3>
               <p className='text-sm text-gray-500 mb-6 max-w-md mx-auto'>
-                Configure o tema e clique em Executar. Os 3 agentes IA trabalham em sequência para criar conteúdo viral:
+                Configure o tema e clique em Executar. Os 3 agentes IA trabalham em sequência:
               </p>
               <div className='grid grid-cols-3 gap-4 max-w-lg mx-auto'>
                 <div className='p-3 bg-cyan-50 rounded-xl'>
