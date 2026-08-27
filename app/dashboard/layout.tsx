@@ -2,15 +2,13 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import SideNav from './_components/SideNav'
-import { TotalUsageContext } from '../(context)/TotalUsageContext'
 
 function Layout({ children }: { children: React.ReactNode }) {
-  const [totalUsage, setTotalUsage] = useState<number>(0)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const router = useRouter()
 
   useEffect(() => {
-    // Check for auth session
+    // Check for auth session in localStorage
     const user = localStorage.getItem('altomatico_user')
     if (!user) {
       router.push('/sign-in')
@@ -18,7 +16,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     }
     try {
       const parsed = JSON.parse(user)
-      if (!parsed.id || !parsed.email) {
+      if (!parsed.email) {
         router.push('/sign-in')
         return
       }
@@ -43,19 +41,15 @@ function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <TotalUsageContext.Provider value={{ totalUsage, setTotalUsage }}>
-      <div className='flex h-screen bg-gray-50'>
-        {/* Sidebar */}
-        <div className='w-64 flex-shrink-0 hidden md:block'>
-          <SideNav />
-        </div>
+    <div className='flex min-h-screen bg-gray-50'>
+      {/* Sidebar - hidden on mobile, shown on desktop */}
+      <SideNav />
 
-        {/* Main Content */}
-        <div className='flex-1 overflow-y-auto'>
-          {children}
-        </div>
+      {/* Main Content */}
+      <div className='flex-1 overflow-y-auto md:pt-0 pt-14'>
+        {children}
       </div>
-    </TotalUsageContext.Provider>
+    </div>
   )
 }
 
