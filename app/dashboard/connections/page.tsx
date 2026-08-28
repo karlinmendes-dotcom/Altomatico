@@ -145,6 +145,51 @@ export default function ConnectionsPage() {
     setChannelConfigs(getChannelConfigs())
   }, [])
 
+  // Auto-refresh TikTok token when expiring (runs on mount + every hour)
+  useEffect(() => {
+    const refreshTikTokToken = async () => {
+      const allConns = getConnections()
+      const tt = allConns.tiktok as Record<string, unknown> | undefined
+      if (!tt?.refreshToken || !tt?.expiresAt) return
+
+      const now = Date.now()
+      const expiresAt = tt.expiresAt as number
+      const hoursUntilExpiry = (expiresAt - now) / (1000 * 60 * 60)
+
+      // Refresh if less than 6 hours until expiry
+      if (hoursUntilExpiry > 6) return
+
+      try {
+        const res = await fetch('/api/tiktok/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: tt.refreshToken }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          // Update stored tokens
+          const updatedConns = getConnections()
+          updatedConns.tiktok = {
+            ...updatedConns.tiktok,
+            token: data.accessToken,
+            refreshToken: data.refreshToken,
+            expiresAt: data.expiresAt,
+            refreshExpiresAt: data.refreshExpiresAt,
+          }
+          localStorage.setItem('altomatico_connections', JSON.stringify(updatedConns))
+          setConnections(getConnections())
+          console.log('TikTok token refreshed automatically')
+        }
+      } catch (err) {
+        console.error('Auto-refresh TikTok failed:', err)
+      }
+    }
+
+    refreshTikTokToken() // Run on mount
+    const interval = setInterval(refreshTikTokToken, 60 * 60 * 1000) // Every hour
+    return () => clearInterval(interval)
+  }, [])
+
   const showMsg = (msg: string, isError = false) => {
     setMessage(msg)
     setTimeout(() => setMessage(null), 8000)
@@ -710,10 +755,39 @@ export default function ConnectionsPage() {
                   <div className='bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 flex items-center justify-between'>
                     <div className='flex items-center gap-2'>
                       <AlertTriangle className='w-4 h-4 text-amber-500' />
-                      <span className='text-xs font-medium text-amber-700'>⚠️ Expira em {ttExpiry.daysLeft} dia(s) — Renovação necessária</span>
+                      <span className='text-xs font-medium text-amber-700'>⚠️ Expira em {ttExpiry.daysLeft} dia(s) — Renovação automática ativa</span>
                     </div>
-                    <Button onClick={() => { removeConnection('tiktok'); refresh(); }} size='sm' className='bg-amber-500 hover:bg-amber-600 text-white text-[10px]'>
-                      <RefreshCw className='w-3 h-3 mr-1' /> Reconectar
+                    <Button 
+                      onClick={async () => {
+                        const allConns = getConnections()
+                        const ttData = allConns.tiktok as Record<string, unknown>
+                        if (ttData?.refreshToken) {
+                          showMsg('🔄 Renovando token TikTok...')
+                          try {
+                            const res = await fetch('/api/tiktok/refresh', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ refreshToken: ttData.refreshToken }),
+                            })
+                            const data = await res.json()
+                            if (data.success) {
+                              allConns.tiktok = { ...allConns.tiktok, token: data.accessToken, refreshToken: data.refreshToken, expiresAt: data.expiresAt, refreshExpiresAt: data.refreshExpiresAt }
+                              localStorage.setItem('altomatico_connections', JSON.stringify(allConns))
+                              refresh()
+                              showMsg('✅ Token TikTok renovado!')
+                            } else {
+                              showMsg('❌ Não foi possível renovar. Reconecte manualmente.', true)
+                            }
+                          } catch { showMsg('❌ Erro ao renovar token', true) }
+                        } else {
+                          removeConnection('tiktok')
+                          refresh()
+                        }
+                      }} 
+                      size='sm' 
+                      className='bg-green-500 hover:bg-green-600 text-white text-[10px]'
+                    >
+                      <RefreshCw className='w-3 h-3 mr-1' /> Renovar Token
                     </Button>
                   </div>
                 )
