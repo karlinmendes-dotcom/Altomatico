@@ -84,8 +84,8 @@ async function fetchMusic(pixabayKey: string, mood: string): Promise<string> {
 // ─── Motor 1: Animação 2D ───────────────────────────────────
 
 async function motorAnimation2D(geminiKey: string, niche: string, systemPrompt: string) {
-  const scriptPrompt = `Você é o DIRETOR CRIATIVO e ROTEIRISTA CHEFE do canal de animações 2D.
-Sua missão é gerar um script completo para um vídeo curto (Shorts/Reels/TikTok) de 45 a 55 segundos no formato vertical (9:16).
+  const scriptPrompt = `Você é o diretor criativo e roteirista chefe do canal de animações 2D "A Idade da Pedra".
+Sua missão é gerar um script completo para um vídeo curto (Shorts/Reels/TikTok) de 45 a 55 segundos no formato vertical (9:16), mantendo perfeita consistência de estilo, humor e otimização para SEO.
 
 ═══════════════════════════════════════════════════
 Nicho: ${niche}
@@ -93,42 +93,41 @@ ${systemPrompt ? `Instruções personalizadas do canal: ${systemPrompt}` : ''}
 ═══════════════════════════════════════════════════
 
 ESTILO VISUAL E ESTÉTICA DA ANIMAÇÃO:
-- Estilo gráfico: Cartum 2D minimalista em preto e branco com detalhes pontuais de cor.
-- Estilo palitinho/stick-figure moderno, olhos expressivos, linhas pretas grossas e traço limpo.
+- Estilo gráfico: Cartum 2D minimalista em preto e branco com detalhes pontuais de cor (estilo palitinho/stick-figure moderno, olhos expressivos, linhas pretas grossas e traço limpo).
 - Cenas compostas por ilustrações cômicas e diretas (quadros dinâmicos que mudam a cada 3-5 segundos para manter a retenção máxima).
 - Textos na tela curtos e impactantes sobrepostos na parte superior da imagem (fonte limpa e legível).
 
 TOM DE VOZ E NARRATIVA:
 - Narração: Cômica, irônica, rápida e em Português (PT-BR).
-- Comparação engraçada entre a vida na Idade da Pedra e os problemas da vida moderna.
+- Nicho: Comparações engraçadas entre a vida na Idade da Pedra (pré-história sem tecnologia, invenções absurdas com pedras/ossos/cavernas) e os problemas absurdos da vida moderna.
 - Estrutura do Roteiro:
-  1. HOOK (0-5s): Pergunta ou afirmação chocante/engraçada para prender a atenção.
+  1. HOOK (0-5s): Pergunta ou afirmação chocante/engraçada para prender a atenção nos primeiros segundos.
   2. DESENVOLVIMENTO (5-40s): História cômica dividida em 6 a 8 quadros/cenas visuais.
   3. CTA / ENCERRAMENTO (40-50s): Piada final com chamada rápida para curtir e se inscrever.
 
 REQUISITOS DE SEO E MONETIZAÇÃO (ALTA RETENÇÃO):
-- Título: Chamativo, com gatilho de curiosidade, otimizado para SEO (máximo 60 caracteres) + emojis.
+- Título: Chamativo, com gatilho de curiosidade, otimizado para SEO (máximo 60 caracteres) + emojis estratégicos.
 - Legenda (Caption): Resumo engajante da piada com pergunta no final para gerar comentários.
-- Hashtags: 10 hashtags virais e focadas no nicho.
-- Trilha Sonora: Música instrumental cômica/alegre em background + efeitos sonoros.
+- Hashtags: 10 hashtags virais e focadas no nicho (ex: #AIdadeDaPedra #DesenhoEngracado #Animacao2D #Humor #Shorts #TikTokBrasil).
+- Trilha Sonora & Efeitos: Recomendação de estilo de áudio cômico (ex: música instrumental alegre em background + efeitos sonoros de pancada de clava/risadas/sons pré-históricos).
 
 FORMATO ESTRITO DA SAÍDA — Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem crases, sem texto antes ou depois):
 {
-  "title": "Título altamente clicável (máx 60 chars)",
-  "narrativeScript": "Texto COMPLETO para ser lido pela narração TTS (PT-BR, tom cômico, irônico)",
+  "title": "Título altamente clicável",
+  "narrativeScript": "Texto completo para ser lido pela narração sintetizada (TTS)",
   "scenes": [
     {
       "sceneNumber": 1,
       "durationSeconds": 5,
-      "visualDescription": "Descrição DETALHADA do desenho 2D stick-figure para cada quadro. Descreva: personagens (tipo, roupa, expressão facial, gestos), cenário (fundo, objetos), e ação que acontece. Use termos como 'stick figure com roupa X surpreso com boca aberta', 'boneco apontando para cima com olhos arregalados', etc.",
-      "textOnScreen": "Texto curto e impactante na tela"
+      "visualDescription": "Descrição detalhada do desenho 2D palitinho para geração da arte (estilo cartum preto e branco)",
+      "textOnScreen": "Texto curto na tela"
     }
   ],
-  "caption": "Legenda completa do post para redes sociais com emojis",
-  "hashtags": ["#AIdadeDaPedra", "#DesenhoEngracado", "#Animacao2D", "#Humor", "#Shorts", "#TikTokBrasil", "#StickFigure", "#HumorBrasil", "#Curiosidades", "#Viral"],
+  "caption": "Legenda completa do post",
+  "hashtags": ["#tag1", "#tag2"],
   "audioStrategy": {
-    "bgMusicGenre": "Música cômica/instrumental leve e alegre",
-    "soundEffects": ["efeito de pancada de clava", "risada", "sons pré-históricos"]
+    "bgMusicGenre": "Música cômica/instrumental leve",
+    "soundEffects": ["efeito1", "efeito2"]
   }
 }`
 
