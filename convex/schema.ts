@@ -364,12 +364,33 @@ export default defineSchema({
     // ═══ Configurações de negócio por canal ═══
     niche: v.optional(v.string()), // Ex: "música", "fitness", "culinária"
     systemPrompt: v.optional(v.string()), // Instruções personalizadas de criação de conteúdo
-    mode: v.optional(v.union(v.literal("AUTO_GENERATED"), v.literal("URL_CLIPS"))), // Geração de zero ou corte de URL
+    motorType: v.optional(v.union(
+      v.literal("animation_2d"), // Motor 1: Animação 2D / Stick Figure
+      v.literal("url_clips"), // Motor 2: Corte de vídeo por URL
+      v.literal("stock_video"), // Motor 3: Vídeos de banco (Pexels/Pixabay + TTS)
+      v.literal("static_post") // Motor 4: Posts estáticos / Carrosséis
+    )),
+    mode: v.optional(v.union(v.literal("AUTO_GENERATED"), v.literal("URL_CLIPS"))), // Compatibilidade
     targetUrl: v.optional(v.string()), // URL do vídeo para recortar (modo URL_CLIPS)
     postFrequency: v.optional(v.number()), // Ex: 1 = 1x ao dia, 2 = 2x ao dia
     autoPublish: v.optional(v.boolean()), // Padrão: false — cria como RASCUNHO/UNLISTED/PRIVATE
     lastCronRunAt: v.optional(v.number()), // Timestamp do último cron job executado
     contentCount: v.optional(v.number()), // Quantos conteúdos já foram gerados
+    // Configurações específicas por motor
+    motorConfig: v.optional(v.object({
+      // Motor 1: Animação 2D
+      animationStyle: v.optional(v.string()), // "stick_figure", "cartoon", "anime"
+      frameRate: v.optional(v.number()),
+      // Motor 2: URL Clipes
+      clipDuration: v.optional(v.number()), // segundos
+      cropMode: v.optional(v.string()), // "center", "face_detect"
+      // Motor 3: Stock Video
+      stockSource: v.optional(v.string()), // "pixabay", "pexels", "both"
+      ttsVoice: v.optional(v.string()), // "pt-BR-FranciscaNeural", "pt-BR-AntonioNeural"
+      // Motor 4: Post Estático
+      imageSize: v.optional(v.string()), // "1080x1080", "1080x1350"
+      designTemplate: v.optional(v.string()), // "minimal", "bold", "corporate"
+    })),
 
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -397,9 +418,16 @@ export default defineSchema({
       v.literal("carousel"),
       v.literal("long_video")
     ),
+    motorType: v.optional(v.union(
+      v.literal("animation_2d"),
+      v.literal("url_clips"),
+      v.literal("stock_video"),
+      v.literal("static_post")
+    )),
     status: v.union(
       v.literal("draft"),
       v.literal("ai_generating"),
+      v.literal("rendering"),
       v.literal("ready"),
       v.literal("scheduled"),
       v.literal("publishing"),

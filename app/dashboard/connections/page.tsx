@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search, Settings, Save, Clock, Wand2, Link, AlertTriangle } from 'lucide-react'
+import { Youtube, Instagram, Music, CheckCircle, AlertCircle, RefreshCw, Link2, Unlink, Zap, Shield, Key, Eye, EyeOff, Search, Settings, Save, Clock, Wand2, Link, AlertTriangle, Play, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useSearchParams } from 'next/navigation'
@@ -32,10 +32,17 @@ function removeConnection(platform: string) {
 interface ChannelConfig {
   niche: string
   systemPrompt: string
+  motorType: 'animation_2d' | 'url_clips' | 'stock_video' | 'static_post'
   mode: 'AUTO_GENERATED' | 'URL_CLIPS'
   targetUrl: string
   postFrequency: number
   autoPublish: boolean
+  motorConfig?: {
+    animationStyle?: string
+    ttsVoice?: string
+    imageSize?: string
+    designTemplate?: string
+  }
 }
 
 function getChannelConfigs(): Record<string, ChannelConfig> {
@@ -95,6 +102,7 @@ export default function ConnectionsPage() {
   const [configNiche, setConfigNiche] = useState('')
   const [configPrompt, setConfigPrompt] = useState('')
   const [configMode, setConfigMode] = useState<'AUTO_GENERATED' | 'URL_CLIPS'>('AUTO_GENERATED')
+  const [configMotorType, setConfigMotorType] = useState<'animation_2d' | 'url_clips' | 'stock_video' | 'static_post'>('stock_video')
   const [configTargetUrl, setConfigTargetUrl] = useState('')
   const [configFrequency, setConfigFrequency] = useState(1)
   const [configAutoPublish, setConfigAutoPublish] = useState(false)
@@ -359,6 +367,7 @@ export default function ConnectionsPage() {
     setEditingConfig(platform)
     setConfigNiche(existing?.niche || '')
     setConfigPrompt(existing?.systemPrompt || '')
+    setConfigMotorType(existing?.motorType || 'stock_video')
     setConfigMode(existing?.mode || 'AUTO_GENERATED')
     setConfigTargetUrl(existing?.targetUrl || '')
     setConfigFrequency(existing?.postFrequency || 1)
@@ -371,6 +380,7 @@ export default function ConnectionsPage() {
     saveChannelConfig(editingConfig, {
       niche: configNiche,
       systemPrompt: configPrompt,
+      motorType: configMotorType,
       mode: configMode,
       targetUrl: configTargetUrl,
       postFrequency: configFrequency,
@@ -392,17 +402,20 @@ export default function ConnectionsPage() {
       return
     }
     setGenerating(platform)
-    showMsg(`🎬 Renderizando vídeo completo para ${platform}... (roteiro + footage + narração + merge)`)
+    const motorLabel = config.motorType === 'animation_2d' ? '🎨 Animação 2D' :
+                      config.motorType === 'url_clips' ? '✂️ Corte URL' :
+                      config.motorType === 'static_post' ? '🖼️ Post Estático' : '🎬 Stock Video'
+    showMsg(`${motorLabel} — Processando para ${platform}...`)
     try {
-      const res = await fetch('/api/render-video', {
+      const res = await fetch('/api/media-router', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           niche: config.niche,
           systemPrompt: config.systemPrompt,
-          mode: config.mode || 'AUTO_GENERATED',
-          targetUrl: config.targetUrl || undefined,
+          motorType: config.motorType || 'stock_video',
           platform: platform as 'youtube' | 'instagram' | 'tiktok',
+          targetUrl: config.targetUrl || undefined,
         })
       })
       const data = await res.json()
@@ -412,20 +425,20 @@ export default function ConnectionsPage() {
       const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
       const newItem = {
         id: `gen_${Date.now()}`,
-        title: data.video.script.title,
-        description: data.video.script.caption,
+        title: data.title,
+        description: data.caption,
         platform,
         contentType: platform === 'youtube' ? 'short' : platform === 'instagram' ? 'reel' : 'short',
         source: 'ai_generated',
-        aiScript: data.video.script.scenes?.map((s: { narration: string }) => s.narration).join('\n\n') || data.video.narrationText,
-        aiHashtags: data.video.script.hashtags,
-        aiNarration: data.video.narrationText,
+        aiScript: data.script,
+        aiHashtags: data.hashtags,
+        aiNarration: data.script,
         aiPrompt: config.systemPrompt,
         status: 'draft',
-        videoUrl: data.video.footageUrls?.[0] || '',
-        thumbnailUrl: data.video.thumbnailUrl || '',
-        imageUrl: '',
-        mediaUrl: data.video.footageUrls?.[0] || '',
+        videoUrl: data.footageUrls?.[0] || data.imageUrl || '',
+        thumbnailUrl: data.footageUrls?.[0] || data.imageUrl || '',
+        imageUrl: data.imageUrl || '',
+        mediaUrl: data.mediaUrl || data.footageUrls?.[0] || data.imageUrl || '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       }
@@ -433,17 +446,17 @@ export default function ConnectionsPage() {
       localStorage.setItem('altomatico_queue', JSON.stringify(queue))
 
       setGeneratedContent({
-        title: data.video.script.title,
-        hook: data.video.script.hook,
-        script: data.video.script.scenes?.map((s: { narration: string }) => s.narration).join('\n\n') || '',
-        caption: data.video.script.caption,
-        hashtags: data.video.script.hashtags,
-        duration: `${data.video.script.totalDuration}s`,
+        title: data.title,
+        hook: data.script?.slice(0, 100) || '',
+        script: data.script || '',
+        caption: data.caption || '',
+        hashtags: data.hashtags || [],
+        duration: '30-60s',
         bestTime: 'A definir',
-        footageCount: data.video.footageUrls?.length || 0,
-        musicUrl: data.video.musicUrl || '',
-        renderStatus: data.video.renderStatus || 'assets_only',
-        videoUrl: data.video.videoUrl || '',
+        footageCount: data.footageUrls?.length || 0,
+        musicUrl: data.musicUrl || '',
+        renderStatus: data.motorType || 'stock_video',
+        videoUrl: data.videoUrl || data.mediaUrl || data.footageUrls?.[0] || '',
       })
       setShowResult(true)
       showMsg(`✅ Vídeo gerado para ${platform}! ${data.video.footageUrls?.length || 0} clips de stock encontrados.`)

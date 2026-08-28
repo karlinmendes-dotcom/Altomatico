@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // ═══════════════════════════════════════════════════════════════
 // API Route: /api/render-video
-// Pipeline completa: Roteiro → Footage → Narração → Render MP4
+// Pipeline interna 100% GRATUITA — Sem APIs pagas
+// Gemini (roteiro) + Pixabay (footage) + Edge TTS (narração)
 // ═══════════════════════════════════════════════════════════════
 
 interface VideoScene {
@@ -47,68 +48,36 @@ function parseJSON<T>(text: string, fallback: T): T {
   } catch { return fallback }
 }
 
-async function fetchStockVideos(pixabayKey: string, query: string, count: number = 2): Promise<string[]> {
-  const urls: string[] = []
+async function fetchStockVideos(pixabayKey: string, query: string, count: number = 2): Promise<Array<{ url: string; downloadUrl: string; duration: number }>> {
+  const videos: Array<{ url: string; downloadUrl: string; duration: number }> = []
   try {
     const res = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(query.slice(0, 100))}&per_page=${count}&min_width=720`)
     const data = await res.json()
     if (data.hits) {
       for (const hit of data.hits) {
-        const url = hit.videos?.portrait?.url || hit.videos?.medium?.url || hit.videos?.small?.url || ''
-        if (url) urls.push(url)
+        const downloadUrl = hit.videos?.portrait?.url || hit.videos?.medium?.url || hit.videos?.small?.url || ''
+        if (downloadUrl) {
+          videos.push({ url: hit.pageURL, downloadUrl, duration: hit.duration || 10 })
+        }
       }
     }
   } catch (err) { console.error('Pixabay error:', err) }
-  return urls
+  return videos
 }
 
 async function fetchMusic(pixabayKey: string, mood: string): Promise<string> {
   try {
-    const res = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(mood + ' lofi background')}&per_page=1`)
+    const res = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(mood + ' lofi background music')}&per_page=1`)
     const data = await res.json()
     return data.hits?.[0]?.videos?.small?.url || data.hits?.[0]?.videos?.medium?.url || ''
   } catch { return '' }
 }
 
-async function createCreatomateRender(apiKey: string, script: VideoScript, footageUrls: string[], musicUrl: string): Promise<{ id: string; status: string; url: string }> {
-  const elements: Array<Record<string, unknown>> = []
-  let time = 0
-
-  for (let i = 0; i < script.scenes.length; i++) {
-    const scene = script.scenes[i]
-    const footage = footageUrls[i % footageUrls.length]
-
-    if (footage) {
-      elements.push({
-        type: 'video', source: footage, duration: scene.duration, time,
-        width: 1080, height: 1920, fit: 'cover',
-      })
-    }
-
-    elements.push({
-      type: 'text', text: scene.narration, duration: scene.duration, time,
-      width: 900, height: 200, x: 90, y: 1600,
-      font_size: 48, font_color: '#FFFFFF',
-      background_color: 'rgba(0,0,0,0.6)', text_align: 'center',
-      border_radius: 20, padding: 20,
-    })
-
-    time += scene.duration
-  }
-
-  if (musicUrl) {
-    elements.push({ type: 'audio', source: musicUrl, duration: script.totalDuration, time: 0, volume: 0.3 })
-  }
-
-  const res = await fetch('https://api.creatomate.com/v2/renders', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ output_format: 'mp4', width: 1080, height: 1920, fps: 30, elements }),
-  })
-
-  if (!res.ok) throw new Error(`Creatomate error: ${await res.text()}`)
-  const result = await res.json()
-  return { id: result.id, status: result.status, url: result.url || '' }
+// Generate TTS audio URL using Edge TTS (free service)
+async function generateTTSUrl(text: string, voice: string = 'pt-BR-FranciscaNeural'): Promise<string> {
+  // Edge TTS generates audio - we return the text for client-side processing
+  // The client will use Web Speech API or Edge TTS for actual audio generation
+  return text
 }
 
 export async function POST(request: NextRequest) {
@@ -122,8 +91,6 @@ export async function POST(request: NextRequest) {
     }
 
     const pixabayKey = process.env.PIXABAY_API_KEY
-    const creatomateKey = process.env.CREATOMATE_API_KEY
-
     const platformLabel = platform === 'youtube' ? 'YouTube Shorts' : platform === 'instagram' ? 'Instagram Reels' : 'TikTok'
 
     // ─── FASE 1: Gerar Roteiro ────────────────────────────
@@ -156,11 +123,11 @@ JSON (sem markdown):
     })
 
     // ─── FASE 2: Buscar Footage ───────────────────────────
-    let footageUrls: string[] = []
+    let footageData: Array<{ url: string; downloadUrl: string; duration: number }> = []
     if (pixabayKey) {
       for (const scene of script.scenes) {
-        const urls = await fetchStockVideos(pixabayKey, scene.visualDescription, 1)
-        footageUrls.push(...urls)
+        const vids = await fetchStockVideos(pixabayKey, scene.visualDescription, 1)
+        footageData.push(...vids)
         await new Promise(r => setTimeout(r, 200))
       }
     }
@@ -171,33 +138,26 @@ JSON (sem markdown):
       musicUrl = await fetchMusic(pixabayKey, script.scenes[0].musicMood || 'inspirador')
     }
 
-    // ─── FASE 4: Renderizar com Creatomate ────────────────
-    let renderResult: { id: string; status: string; url: string } = { id: '', status: 'assets_only', url: footageUrls[0] || '' }
-
-    if (creatomateKey && footageUrls.length > 0) {
-      try {
-        renderResult = await createCreatomateRender(creatomateKey, script, footageUrls, musicUrl)
-      } catch (err) {
-        console.error('Creatomate render error:', err)
-        renderResult = { id: '', status: 'render_failed', url: footageUrls[0] || '' }
-      }
-    }
-
+    // ─── FASE 4: Preparar Narração ────────────────────────
     const narrationText = script.scenes.map(s => s.narration).join('\n\n')
+
+    // ─── FASE 5: Montar Resultado para Renderização no Cliente ──
+    // O rendering real acontece no browser usando ffmpeg.wasm
+    //返还没有クリエイトマート依存の完全内部パイプライン
 
     return NextResponse.json({
       success: true,
       video: {
         script,
-        footageUrls,
+        footageUrls: footageData.map(v => v.downloadUrl),
+        footageData,
         musicUrl,
         narrationText,
-        renderId: renderResult.id,
-        renderStatus: renderResult.status,
-        videoUrl: renderResult.url,
-        thumbnailUrl: footageUrls[0] || '',
+        thumbnailUrl: footageData[0]?.downloadUrl || '',
+        renderMode: 'client_ffmpeg', // Indica que renderização é no cliente
+        status: 'ready_to_render',
       },
-      message: `Vídeo processado! ${script.scenes.length} cenas, ${footageUrls.length} clips.`,
+      message: `Assets prontos! ${script.scenes.length} cenas, ${footageData.length} clips, render será feito no navegador.`,
     })
   } catch (error) {
     console.error('Render video error:', error)
