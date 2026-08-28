@@ -392,9 +392,9 @@ export default function ConnectionsPage() {
       return
     }
     setGenerating(platform)
-    showMsg(`🎬 Gerando vídeo completo para ${platform}... (roteiro + footage + narração)`)
+    showMsg(`🎬 Renderizando vídeo completo para ${platform}... (roteiro + footage + narração + merge)`)
     try {
-      const res = await fetch('/api/generate-video', {
+      const res = await fetch('/api/render-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -442,6 +442,8 @@ export default function ConnectionsPage() {
         bestTime: 'A definir',
         footageCount: data.video.footageUrls?.length || 0,
         musicUrl: data.video.musicUrl || '',
+        renderStatus: data.video.renderStatus || 'assets_only',
+        videoUrl: data.video.videoUrl || '',
       })
       setShowResult(true)
       showMsg(`✅ Vídeo gerado para ${platform}! ${data.video.footageUrls?.length || 0} clips de stock encontrados.`)
@@ -960,6 +962,18 @@ export default function ConnectionsPage() {
                     <div>
                       <p className='text-[10px] text-gray-500'>🗣️ Narração</p>
                       <p className='text-sm font-bold text-gray-900'>✅ Pronta</p>
+                    </div>
+                    <div className='col-span-2'>
+                      <p className='text-[10px] text-gray-500'>🎥 Render</p>
+                      <p className='text-sm font-bold text-gray-900'>
+                        {generatedContent.renderStatus === 'completed' ? '✅ Vídeo Pronto!' :
+                         generatedContent.renderStatus === 'processing' ? '⏳ Renderizando...' :
+                         generatedContent.renderStatus === 'render_failed' ? '⚠️ Render falhou (usando clips)' :
+                         '📦 Assets gerados (roteiro + footage)'}
+                      </p>
+                      {Boolean(generatedContent.videoUrl) && (
+                        <a href={String(generatedContent.videoUrl)} target='_blank' rel='noopener' className='text-xs text-blue-500 hover:underline'>▶️ Assistir vídeo</a>
+                      )}
                     </div>
                   </div>
                 </div>
