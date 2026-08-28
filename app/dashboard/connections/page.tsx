@@ -392,15 +392,12 @@ export default function ConnectionsPage() {
       return
     }
     setGenerating(platform)
-    showMsg(`🧠 Gerando conteúdo para ${platform} via Gemini AI...`)
+    showMsg(`🎬 Gerando vídeo completo para ${platform}... (roteiro + footage + narração)`)
     try {
-      const res = await fetch('/api/generate-now', {
+      const res = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channelName: platform === 'youtube' ? (connections.youtube as Record<string, string>)?.channelName || 'Canal' :
-                       platform === 'instagram' ? `@${(connections.instagram as Record<string, unknown>)?.username || 'instagram'}` :
-                       'TikTok User',
           niche: config.niche,
           systemPrompt: config.systemPrompt,
           mode: config.mode || 'AUTO_GENERATED',
@@ -415,29 +412,39 @@ export default function ConnectionsPage() {
       const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
       const newItem = {
         id: `gen_${Date.now()}`,
-        title: data.content.title,
-        description: data.content.caption,
+        title: data.video.script.title,
+        description: data.video.script.caption,
         platform,
         contentType: platform === 'youtube' ? 'short' : platform === 'instagram' ? 'reel' : 'short',
         source: 'ai_generated',
-        aiScript: data.content.script,
-        aiHashtags: data.content.hashtags,
-        aiNarration: data.content.caption,
+        aiScript: data.video.script.scenes?.map((s: { narration: string }) => s.narration).join('\n\n') || data.video.narrationText,
+        aiHashtags: data.video.script.hashtags,
+        aiNarration: data.video.narrationText,
         aiPrompt: config.systemPrompt,
         status: 'draft',
-        videoUrl: '',
-        thumbnailUrl: '',
+        videoUrl: data.video.footageUrls?.[0] || '',
+        thumbnailUrl: data.video.thumbnailUrl || '',
         imageUrl: '',
-        mediaUrl: '',
+        mediaUrl: data.video.footageUrls?.[0] || '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       }
       queue.unshift(newItem)
       localStorage.setItem('altomatico_queue', JSON.stringify(queue))
 
-      setGeneratedContent(data.content)
+      setGeneratedContent({
+        title: data.video.script.title,
+        hook: data.video.script.hook,
+        script: data.video.script.scenes?.map((s: { narration: string }) => s.narration).join('\n\n') || '',
+        caption: data.video.script.caption,
+        hashtags: data.video.script.hashtags,
+        duration: `${data.video.script.totalDuration}s`,
+        bestTime: 'A definir',
+        footageCount: data.video.footageUrls?.length || 0,
+        musicUrl: data.video.musicUrl || '',
+      })
       setShowResult(true)
-      showMsg(`✅ Conteúdo gerado para ${platform}! Verifique a fila de rascunhos.`)
+      showMsg(`✅ Vídeo gerado para ${platform}! ${data.video.footageUrls?.length || 0} clips de stock encontrados.`)
     } catch (err) {
       showMsg(`❌ Erro ao gerar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, true)
     } finally {
@@ -875,8 +882,8 @@ export default function ConnectionsPage() {
                     <Wand2 className='w-5 h-5 text-green-600' />
                   </div>
                   <div>
-                    <h3 className='font-bold text-gray-900'>Conteúdo Gerado!</h3>
-                    <p className='text-xs text-gray-500'>Gemini AI • Rascunho salvo na fila</p>
+                    <h3 className='font-bold text-gray-900'>🎬 Vídeo Gerado!</h3>
+                    <p className='text-xs text-gray-500'>Roteiro + {(generatedContent.footageCount as number) || 0} clips de stock + narração</p>
                   </div>
                 </div>
                 <button onClick={() => { setShowResult(false); setGeneratedContent(null); }} className='text-gray-400 hover:text-gray-600 text-xl'>✕</button>
@@ -932,15 +939,28 @@ export default function ConnectionsPage() {
                   </div>
                 </div>
 
-                {/* Meta info */}
-                <div className='grid grid-cols-2 gap-3'>
-                  <div className='bg-gray-50 rounded-xl p-3'>
-                    <p className='text-[10px] text-gray-500'>⏱️ Duração</p>
-                    <p className='text-sm font-bold text-gray-900'>{generatedContent.duration as string}</p>
+                {/* Video Info */}
+                <div className='bg-cyan-50 rounded-xl p-4'>
+                  <div className='flex items-center gap-2 mb-2'>
+                    <span className='text-xs font-bold text-cyan-700'>🎬 VÍDEO</span>
                   </div>
-                  <div className='bg-gray-50 rounded-xl p-3'>
-                    <p className='text-[10px] text-gray-500'>🕐 Melhor Horário</p>
-                    <p className='text-sm font-bold text-gray-900'>{generatedContent.bestTime as string}</p>
+                  <div className='grid grid-cols-2 gap-3'>
+                    <div>
+                      <p className='text-[10px] text-gray-500'>⏱️ Duração</p>
+                      <p className='text-sm font-bold text-gray-900'>{generatedContent.duration as string}</p>
+                    </div>
+                    <div>
+                      <p className='text-[10px] text-gray-500'>🎞️ Clips de Stock</p>
+                      <p className='text-sm font-bold text-gray-900'>{(generatedContent.footageCount as number) || 0} encontrados</p>
+                    </div>
+                    <div>
+                      <p className='text-[10px] text-gray-500'>🎵 Música</p>
+                      <p className='text-sm font-bold text-gray-900'>{generatedContent.musicUrl ? '✅ Encontrada' : '⏳ Pendente'}</p>
+                    </div>
+                    <div>
+                      <p className='text-[10px] text-gray-500'>🗣️ Narração</p>
+                      <p className='text-sm font-bold text-gray-900'>✅ Pronta</p>
+                    </div>
                   </div>
                 </div>
 
