@@ -161,9 +161,9 @@ function generateStickScenes(script: VideoScript): StickScene[] {
       characters,
       background,
       backgroundProps,
-      text: sceneData.subtitleText || sceneData.narration.slice(0, 80),
-      textPosition: 'bottom',
-      textStyle: desc.includes('grit') || desc.includes('scream') ? 'screaming' : 'normal',
+      text: ('textOnScreen' in sceneData ? (sceneData as { textOnScreen?: string }).textOnScreen : undefined) || sceneData.subtitleText || sceneData.narration.slice(0, 80),
+      textPosition: 'top',
+      textStyle: desc.includes('grit') || desc.includes('scream') || desc.includes('exclama') ? 'screaming' : 'normal',
       duration: sceneData.duration || 5,
       transition: 'cut',
     })

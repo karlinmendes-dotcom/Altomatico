@@ -84,43 +84,89 @@ async function fetchMusic(pixabayKey: string, mood: string): Promise<string> {
 // ─── Motor 1: Animação 2D ───────────────────────────────────
 
 async function motorAnimation2D(geminiKey: string, niche: string, systemPrompt: string) {
-  const scriptPrompt = `Você é um roteirista de ANIMAÇÃO 2D / STICK FIGURE para vídeos cômicos.
+  const scriptPrompt = `Você é o DIRETOR CRIATIVO e ROTEIRISTA CHEFE do canal de animações 2D.
+Sua missão é gerar um script completo para um vídeo curto (Shorts/Reels/TikTok) de 45 a 55 segundos no formato vertical (9:16).
 
+═══════════════════════════════════════════════════
 Nicho: ${niche}
-${systemPrompt ? `Instruções: ${systemPrompt}` : ""}
+${systemPrompt ? `Instruções personalizadas do canal: ${systemPrompt}` : ''}
+═══════════════════════════════════════════════════
 
-Gere um roteiro CÔMICO para animação 2D, cena a cena.
-Cada cena: narração cômica, descrição visual para stick figure, duração, expressão facial.
-Total: 30-60 segundos. 4-8 cenas. Estilo: cômico, viral.
+ESTILO VISUAL E ESTÉTICA DA ANIMAÇÃO:
+- Estilo gráfico: Cartum 2D minimalista em preto e branco com detalhes pontuais de cor.
+- Estilo palitinho/stick-figure moderno, olhos expressivos, linhas pretas grossas e traço limpo.
+- Cenas compostas por ilustrações cômicas e diretas (quadros dinâmicos que mudam a cada 3-5 segundos para manter a retenção máxima).
+- Textos na tela curtos e impactantes sobrepostos na parte superior da imagem (fonte limpa e legível).
 
-JSON (sem markdown):
+TOM DE VOZ E NARRATIVA:
+- Narração: Cômica, irônica, rápida e em Português (PT-BR).
+- Comparação engraçada entre a vida na Idade da Pedra e os problemas da vida moderna.
+- Estrutura do Roteiro:
+  1. HOOK (0-5s): Pergunta ou afirmação chocante/engraçada para prender a atenção.
+  2. DESENVOLVIMENTO (5-40s): História cômica dividida em 6 a 8 quadros/cenas visuais.
+  3. CTA / ENCERRAMENTO (40-50s): Piada final com chamada rápida para curtir e se inscrever.
+
+REQUISITOS DE SEO E MONETIZAÇÃO (ALTA RETENÇÃO):
+- Título: Chamativo, com gatilho de curiosidade, otimizado para SEO (máximo 60 caracteres) + emojis.
+- Legenda (Caption): Resumo engajante da piada com pergunta no final para gerar comentários.
+- Hashtags: 10 hashtags virais e focadas no nicho.
+- Trilha Sonora: Música instrumental cômica/alegre em background + efeitos sonoros.
+
+FORMATO ESTRITO DA SAÍDA — Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem crases, sem texto antes ou depois):
 {
-  "title": "título cômico (máx 60 chars)",
-  "hook": "gancho cômico 3s",
-  "scenes": [{
-    "narration": "narração cômica",
-    "visualDescription": "descrição para stick figure 2D",
-    "duration": 5,
-    "facialExpression": "surpreso",
-    "musicMood": "cômico"
-  }],
-  "caption": "legenda com emojis",
-  "hashtags": ["#tag1","#tag2","#tag3","#tag4","#tag5"],
-  "totalDuration": 45
+  "title": "Título altamente clicável (máx 60 chars)",
+  "narrativeScript": "Texto COMPLETO para ser lido pela narração TTS (PT-BR, tom cômico, irônico)",
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "durationSeconds": 5,
+      "visualDescription": "Descrição DETALHADA do desenho 2D stick-figure para cada quadro. Descreva: personagens (tipo, roupa, expressão facial, gestos), cenário (fundo, objetos), e ação que acontece. Use termos como 'stick figure com roupa X surpreso com boca aberta', 'boneco apontando para cima com olhos arregalados', etc.",
+      "textOnScreen": "Texto curto e impactante na tela"
+    }
+  ],
+  "caption": "Legenda completa do post para redes sociais com emojis",
+  "hashtags": ["#AIdadeDaPedra", "#DesenhoEngracado", "#Animacao2D", "#Humor", "#Shorts", "#TikTokBrasil", "#StickFigure", "#HumorBrasil", "#Curiosidades", "#Viral"],
+  "audioStrategy": {
+    "bgMusicGenre": "Música cômica/instrumental leve e alegre",
+    "soundEffects": ["efeito de pancada de clava", "risada", "sons pré-históricos"]
+  }
 }`
 
   const scriptText = await callGemini(geminiKey, scriptPrompt, 4096)
   const script = parseJSON(scriptText, {
-    title: 'Animação 2D', hook: '',
-    scenes: [{ narration: scriptText, visualDescription: 'stick figure', duration: 8, musicMood: 'cômico' }],
-    caption: '', hashtags: [], totalDuration: 30,
+    title: 'A Idade da Pedra',
+    narrativeScript: scriptText,
+    scenes: [{ sceneNumber: 1, durationSeconds: 5, visualDescription: 'stick figure na caverna', textOnScreen: '', narration: scriptText, duration: 5, musicMood: 'cômico' }],
+    caption: '',
+    hashtags: ['#AIdadeDaPedra', '#DesenhoEngracado', '#Animacao2D', '#Humor', '#Shorts'],
+    audioStrategy: { bgMusicGenre: 'cômico instrumental', soundEffects: ['clava', 'risada'] },
+    totalDuration: 45,
   })
+
+  // Normalizar scenes para o formato do renderer
+  const rawScenes = (script.scenes || []) as Array<Record<string, unknown>>
+  const normalizedScenes = rawScenes.map((s, i) => ({
+    narration: String(s.narrativeScript || s.narration || s.textOnScreen || ''),
+    visualDescription: String(s.visualDescription || 'stick figure animation'),
+    duration: Number(s.durationSeconds || s.duration || 5),
+    musicMood: String(s.musicMood || 'cômico'),
+    textOnScreen: String(s.textOnScreen || ''),
+    sceneNumber: Number(s.sceneNumber || i + 1),
+  }))
+
+  const fullNarration = normalizedScenes.map(s => s.narration).join('\n\n')
+  const descriptions = normalizedScenes.map(s => s.visualDescription)
 
   return {
     success: true, motorType: 'animation_2d',
-    title: script.title, caption: script.caption, hashtags: script.hashtags,
-    script: script.scenes.map((s: { narration: string }) => s.narration).join('\n\n'),
-    footageUrls: script.scenes.map((s: { visualDescription: string }) => s.visualDescription),
+    title: String(script.title || 'A Idade da Pedra'),
+    caption: String(script.caption || ''),
+    hashtags: (script.hashtags as string[]) || ['#AIdadeDaPedra', '#Humor', '#Shorts'],
+    scenes: normalizedScenes,
+    script: String(script.narrativeScript || fullNarration),
+    narrationText: String(script.narrativeScript || fullNarration),
+    footageUrls: descriptions,
+    audioStrategy: (script.audioStrategy as Record<string, unknown>) || {},
   }
 }
 
