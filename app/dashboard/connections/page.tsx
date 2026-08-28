@@ -430,11 +430,20 @@ export default function ConnectionsPage() {
         showMsg('🎨 Renderizando stick figures no browser...')
         try {
           const { renderVideo } = await import('@/lib/ffmpeg-renderer')
+          const rawScenes = Array.isArray(data.scenes) ? data.scenes : []
+          const normalizedScenes = rawScenes.map((s: Record<string, unknown>) => ({
+            narration: String(s.narration || s.textOnScreen || data.script || ''),
+            visualDescription: String(s.visualDescription || 'stick figure animation'),
+            duration: Number(s.durationSeconds || s.duration || 5),
+            musicMood: String(s.musicMood || 'cômico'),
+            textOnScreen: String(s.textOnScreen || ''),
+            subtitleText: String(s.textOnScreen || ''),
+          }))
           const scriptData = {
             title: data.title || 'Vídeo Stick Figure',
             hook: data.script?.slice(0, 100) || '',
-            scenes: Array.isArray(data.scenes) ? data.scenes : [
-              { narration: data.script || '', visualDescription: 'stick figure animation', duration: 30, musicMood: 'cômico' }
+            scenes: normalizedScenes.length > 0 ? normalizedScenes : [
+              { narration: data.script || '', visualDescription: 'stick figure animation', duration: 30, musicMood: 'cômico', textOnScreen: '', subtitleText: '' }
             ],
             caption: data.caption || '',
             hashtags: data.hashtags || [],
