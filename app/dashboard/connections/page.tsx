@@ -407,6 +407,8 @@ export default function ConnectionsPage() {
                       config.motorType === 'static_post' ? '🖼️ Post Estático' : '🎬 Stock Video'
     showMsg(`${motorLabel} — Processando para ${platform}...`)
     try {
+      // Step 1: Get script from media router (Gemini AI)
+      showMsg(`${motorLabel} — Gerando roteiro com IA...`)
       const res = await fetch('/api/media-router', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -420,8 +422,43 @@ export default function ConnectionsPage() {
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      
-      // Save to localStorage queue
+
+      // Step 2: If animation_2d, render stick figure video client-side
+      let mediaUrl = data.mediaUrl || data.footageUrls?.[0] || data.imageUrl || ''
+
+      if (config.motorType === 'animation_2d') {
+        showMsg('🎨 Renderizando stick figures no browser...')
+        try {
+          const { renderVideo } = await import('@/lib/ffmpeg-renderer')
+          const scriptData = {
+            title: data.title || 'Vídeo Stick Figure',
+            hook: data.script?.slice(0, 100) || '',
+            scenes: Array.isArray(data.scenes) ? data.scenes : [
+              { narration: data.script || '', visualDescription: 'stick figure animation', duration: 30, musicMood: 'cômico' }
+            ],
+            caption: data.caption || '',
+            hashtags: data.hashtags || [],
+            totalDuration: 30,
+          }
+          const result = await renderVideo(
+            {
+              script: scriptData,
+              footageUrls: data.footageUrls || [],
+              musicUrl: data.musicUrl || '',
+              narrationText: data.script || '',
+              motorType: 'animation_2d',
+            },
+            (progress) => showMsg(`🎨 ${progress.message}`)
+          )
+          mediaUrl = result.videoUrl
+          showMsg(`✅ Vídeo renderizado! (${result.duration}s)`)
+        } catch (renderErr) {
+          console.error('Stick figure render error:', renderErr)
+          showMsg('⚠️ Renderização offline — salvando roteiro', true)
+        }
+      }
+
+      // Step 3: Save to localStorage queue
       const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
       const newItem = {
         id: `gen_${Date.now()}`,
@@ -430,15 +467,17 @@ export default function ConnectionsPage() {
         platform,
         contentType: platform === 'youtube' ? 'short' : platform === 'instagram' ? 'reel' : 'short',
         source: 'ai_generated',
+        motorType: config.motorType,
         aiScript: data.script,
         aiHashtags: data.hashtags,
         aiNarration: data.script,
         aiPrompt: config.systemPrompt,
         status: 'draft',
-        videoUrl: data.footageUrls?.[0] || data.imageUrl || '',
-        thumbnailUrl: data.footageUrls?.[0] || data.imageUrl || '',
+        videoUrl: mediaUrl,
+        thumbnailUrl: mediaUrl,
         imageUrl: data.imageUrl || '',
-        mediaUrl: data.mediaUrl || data.footageUrls?.[0] || data.imageUrl || '',
+        mediaUrl,
+        scenes: data.scenes || [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       }
@@ -455,11 +494,12 @@ export default function ConnectionsPage() {
         bestTime: 'A definir',
         footageCount: data.footageUrls?.length || 0,
         musicUrl: data.musicUrl || '',
-        renderStatus: data.motorType || 'stock_video',
-        videoUrl: data.videoUrl || data.mediaUrl || data.footageUrls?.[0] || '',
+        renderStatus: config.motorType || 'stock_video',
+        videoUrl: mediaUrl,
       })
       setShowResult(true)
-      showMsg(`✅ Vídeo gerado para ${platform}! ${data.video.footageUrls?.length || 0} clips de stock encontrados.`)
+      const clipCount = data.footageUrls?.length || 0
+      showMsg(`✅ Conteúdo pronto para ${platform}! ${clipCount > 0 ? `${clipCount} clips encontrados.` : 'Roteiro gerado.'}`)
     } catch (err) {
       showMsg(`❌ Erro ao gerar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, true)
     } finally {
