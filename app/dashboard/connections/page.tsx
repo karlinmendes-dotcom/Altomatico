@@ -100,6 +100,11 @@ export default function ConnectionsPage() {
   const [configAutoPublish, setConfigAutoPublish] = useState(false)
   const [configSaved, setConfigSaved] = useState(false)
 
+  // Generate now state
+  const [generating, setGenerating] = useState<string | null>(null) // platform being generated
+  const [generatedContent, setGeneratedContent] = useState<Record<string, unknown> | null>(null)
+  const [showResult, setShowResult] = useState(false)
+
   const searchParams = useSearchParams()
 
   // Handle OAuth callback parameters from URL
@@ -332,6 +337,78 @@ export default function ConnectionsPage() {
     setTimeout(() => setConfigSaved(false), 3000)
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // GENERATE NOW — Gera conteúdo via Gemini AI
+  // ═══════════════════════════════════════════════════════════
+  const handleGenerateNow = async (platform: string) => {
+    const config = channelConfigs[platform]
+    if (!config?.niche) {
+      showMsg(`❌ Configure o nicho do ${platform} primeiro!`, true)
+      return
+    }
+    setGenerating(platform)
+    showMsg(`🧠 Gerando conteúdo para ${platform} via Gemini AI...`)
+    try {
+      const res = await fetch('/api/generate-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelName: platform === 'youtube' ? (connections.youtube as Record<string, string>)?.channelName || 'Canal' :
+                       platform === 'instagram' ? `@${(connections.instagram as Record<string, unknown>)?.username || 'instagram'}` :
+                       'TikTok User',
+          niche: config.niche,
+          systemPrompt: config.systemPrompt,
+          mode: config.mode || 'AUTO_GENERATED',
+          targetUrl: config.targetUrl || undefined,
+          platform: platform as 'youtube' | 'instagram' | 'tiktok',
+        })
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      
+      // Save to localStorage queue
+      const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
+      const newItem = {
+        id: `gen_${Date.now()}`,
+        title: data.content.title,
+        description: data.content.caption,
+        platform,
+        contentType: platform === 'youtube' ? 'short' : platform === 'instagram' ? 'reel' : 'short',
+        source: 'ai_generated',
+        aiScript: data.content.script,
+        aiHashtags: data.content.hashtags,
+        aiNarration: data.content.caption,
+        aiPrompt: config.systemPrompt,
+        status: 'draft',
+        videoUrl: '',
+        thumbnailUrl: '',
+        imageUrl: '',
+        mediaUrl: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      queue.unshift(newItem)
+      localStorage.setItem('altomatico_queue', JSON.stringify(queue))
+
+      setGeneratedContent(data.content)
+      setShowResult(true)
+      showMsg(`✅ Conteúdo gerado para ${platform}! Verifique a fila de rascunhos.`)
+    } catch (err) {
+      showMsg(`❌ Erro ao gerar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, true)
+    } finally {
+      setGenerating(null)
+    }
+  }
+
+  // Copy to clipboard helper
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      showMsg('📋 Copiado para a área de transferência!')
+    }).catch(() => {
+      showMsg('❌ Erro ao copiar', true)
+    })
+  }
+
   const yt = connections.youtube as Record<string, string> | undefined
   const ig = connections.instagram as Record<string, unknown> | undefined
   const tt = connections.tiktok as Record<string, string> | undefined
@@ -435,6 +512,20 @@ export default function ConnectionsPage() {
             <Button onClick={() => openConfig('youtube')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
               <Settings className='w-4 h-4 mr-2' /> Configurar Canal
             </Button>
+            <Button 
+              onClick={() => handleGenerateNow('youtube')} 
+              disabled={generating === 'youtube' || !channelConfigs.youtube?.niche}
+              className='w-full mb-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-50'
+            >
+              {generating === 'youtube' ? (
+                <><RefreshCw className='w-4 h-4 mr-2 animate-spin' /> Gerando...</>
+              ) : (
+                <><Wand2 className='w-4 h-4 mr-2' /> Gerar Agora</>
+              )}
+            </Button>
+            {!channelConfigs.youtube?.niche && (
+              <p className='text-[10px] text-amber-600 text-center'>⚠️ Configure o nicho primeiro</p>
+            )}
             <Button onClick={handleDisconnectYouTube} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
             </Button>
@@ -528,6 +619,20 @@ export default function ConnectionsPage() {
             <Button onClick={() => openConfig('instagram')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
               <Settings className='w-4 h-4 mr-2' /> Configurar Canal
             </Button>
+            <Button 
+              onClick={() => handleGenerateNow('instagram')} 
+              disabled={generating === 'instagram' || !channelConfigs.instagram?.niche}
+              className='w-full mb-2 bg-gradient-to-r from-pink-600 to-orange-600 hover:from-pink-700 hover:to-orange-700 text-white disabled:opacity-50'
+            >
+              {generating === 'instagram' ? (
+                <><RefreshCw className='w-4 h-4 mr-2 animate-spin' /> Gerando...</>
+              ) : (
+                <><Wand2 className='w-4 h-4 mr-2' /> Gerar Agora</>
+              )}
+            </Button>
+            {!channelConfigs.instagram?.niche && (
+              <p className='text-[10px] text-amber-600 text-center'>⚠️ Configure o nicho primeiro</p>
+            )}
             <Button onClick={handleDisconnectInstagram} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
             </Button>
@@ -618,6 +723,20 @@ export default function ConnectionsPage() {
             <Button onClick={() => openConfig('tiktok')} variant='outline' className='w-full mb-2 border-blue-200 text-blue-600 hover:bg-blue-50'>
               <Settings className='w-4 h-4 mr-2' /> Configurar Canal
             </Button>
+            <Button 
+              onClick={() => handleGenerateNow('tiktok')} 
+              disabled={generating === 'tiktok' || !channelConfigs.tiktok?.niche}
+              className='w-full mb-2 bg-gradient-to-r from-cyan-600 to-black hover:from-cyan-700 hover:to-gray-900 text-white disabled:opacity-50'
+            >
+              {generating === 'tiktok' ? (
+                <><RefreshCw className='w-4 h-4 mr-2 animate-spin' /> Gerando...</>
+              ) : (
+                <><Wand2 className='w-4 h-4 mr-2' /> Gerar Agora</>
+              )}
+            </Button>
+            {!channelConfigs.tiktok?.niche && (
+              <p className='text-[10px] text-amber-600 text-center'>⚠️ Configure o nicho primeiro</p>
+            )}
             <Button onClick={handleDisconnectTiktok} variant='outline' className='w-full text-red-600 border-red-200 hover:bg-red-50'>
               <Unlink className='w-4 h-4 mr-2' /> Desconectar
             </Button>
@@ -668,6 +787,116 @@ export default function ConnectionsPage() {
           </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════════════
+       * GENERATED CONTENT RESULT — Exibe o conteúdo gerado pela IA
+       * ═══════════════════════════════════════════════════════════════════════════════ */}
+      {showResult && generatedContent && (
+        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4'>
+          <div className='bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto'>
+            <div className='p-6'>
+              <div className='flex items-center justify-between mb-5'>
+                <div className='flex items-center gap-3'>
+                  <div className='w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center'>
+                    <Wand2 className='w-5 h-5 text-green-600' />
+                  </div>
+                  <div>
+                    <h3 className='font-bold text-gray-900'>Conteúdo Gerado!</h3>
+                    <p className='text-xs text-gray-500'>Gemini AI • Rascunho salvo na fila</p>
+                  </div>
+                </div>
+                <button onClick={() => { setShowResult(false); setGeneratedContent(null); }} className='text-gray-400 hover:text-gray-600 text-xl'>✕</button>
+              </div>
+
+              <div className='space-y-4'>
+                {/* Title */}
+                <div className='bg-blue-50 rounded-xl p-4'>
+                  <div className='flex items-center justify-between mb-1'>
+                    <span className='text-xs font-bold text-blue-700'>📝 TÍTULO</span>
+                    <button onClick={() => copyToClipboard(generatedContent.title as string)} className='text-xs text-blue-500 hover:text-blue-700'>📋 Copiar</button>
+                  </div>
+                  <p className='text-sm font-bold text-gray-900'>{generatedContent.title as string}</p>
+                </div>
+
+                {/* Hook */}
+                <div className='bg-amber-50 rounded-xl p-4'>
+                  <div className='flex items-center justify-between mb-1'>
+                    <span className='text-xs font-bold text-amber-700'>🎣 GANCHO (Hook)</span>
+                    <button onClick={() => copyToClipboard(generatedContent.hook as string)} className='text-xs text-amber-500 hover:text-amber-700'>📋 Copiar</button>
+                  </div>
+                  <p className='text-sm text-gray-900'>{generatedContent.hook as string}</p>
+                </div>
+
+                {/* Script */}
+                <div className='bg-purple-50 rounded-xl p-4'>
+                  <div className='flex items-center justify-between mb-1'>
+                    <span className='text-xs font-bold text-purple-700'>🎬 ROTEIRO</span>
+                    <button onClick={() => copyToClipboard(generatedContent.script as string)} className='text-xs text-purple-500 hover:text-purple-700'>📋 Copiar</button>
+                  </div>
+                  <p className='text-sm text-gray-900 whitespace-pre-wrap'>{generatedContent.script as string}</p>
+                </div>
+
+                {/* Caption */}
+                <div className='bg-pink-50 rounded-xl p-4'>
+                  <div className='flex items-center justify-between mb-1'>
+                    <span className='text-xs font-bold text-pink-700'>💬 LEGENDA</span>
+                    <button onClick={() => copyToClipboard(generatedContent.caption as string)} className='text-xs text-pink-500 hover:text-pink-700'>📋 Copiar</button>
+                  </div>
+                  <p className='text-sm text-gray-900 whitespace-pre-wrap'>{generatedContent.caption as string}</p>
+                </div>
+
+                {/* Hashtags */}
+                <div className='bg-green-50 rounded-xl p-4'>
+                  <div className='flex items-center justify-between mb-1'>
+                    <span className='text-xs font-bold text-green-700'>🏷️ HASHTAGS</span>
+                    <button onClick={() => copyToClipboard((generatedContent.hashtags as string[])?.join(' '))} className='text-xs text-green-500 hover:text-green-700'>📋 Copiar</button>
+                  </div>
+                  <div className='flex flex-wrap gap-1'>
+                    {(generatedContent.hashtags as string[])?.map((tag: string, i: number) => (
+                      <span key={i} className='bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full'>{tag}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Meta info */}
+                <div className='grid grid-cols-2 gap-3'>
+                  <div className='bg-gray-50 rounded-xl p-3'>
+                    <p className='text-[10px] text-gray-500'>⏱️ Duração</p>
+                    <p className='text-sm font-bold text-gray-900'>{generatedContent.duration as string}</p>
+                  </div>
+                  <div className='bg-gray-50 rounded-xl p-3'>
+                    <p className='text-[10px] text-gray-500'>🕐 Melhor Horário</p>
+                    <p className='text-sm font-bold text-gray-900'>{generatedContent.bestTime as string}</p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className='flex gap-3 pt-2'>
+                  <Button
+                    onClick={() => { setShowResult(false); setGeneratedContent(null); }}
+                    variant='outline'
+                    className='flex-1'
+                  >
+                    Fechar
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      copyToClipboard(
+                        `TÍTULO: ${generatedContent.title}\n\nGANCHO: ${generatedContent.hook}\n\nROTEIRO:\n${generatedContent.script}\n\nLEGENDA:\n${generatedContent.caption}\n\nHASHTAGS:\n${(generatedContent.hashtags as string[])?.join(' ')}`
+                      )
+                    }}
+                    className='flex-1 bg-green-600 hover:bg-green-700 text-white'
+                  >
+                    📋 Copiar Tudo
+                  </Button>
+                </div>
+
+                <p className='text-[10px] text-gray-400 text-center'>O rascunho foi salvo na fila. Acesse /dashboard/queue para editar e enviar.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════════════════
        * CONFIG PANEL — Configuração de Canal (nicho, prompt, modo, frequência)
