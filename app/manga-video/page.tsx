@@ -63,13 +63,30 @@ export default function MangaVideoPage() {
   useEffect(() => {
     try {
       const connections = JSON.parse(localStorage.getItem('altomatico_connections') || '{}')
+      const channels: YouTubeChannel[] = []
+      // Suportar múltiplos canais YouTube
       if (connections.youtube) {
-        setYtChannels([{
-          channelId: connections.youtube.channelId || '',
-          channelName: connections.youtube.channelName || 'YouTube Canal',
-        }])
-        setSelectedChannel(connections.youtube.channelId || '')
+        if (Array.isArray(connections.youtube)) {
+          channels.push(...connections.youtube)
+        } else {
+          channels.push({
+            channelId: connections.youtube.channelId || '',
+            channelName: connections.youtube.channelName || 'YouTube Canal',
+          })
+        }
       }
+      // Buscar canais adicionais salvos separadamente
+      for (let i = 1; i <= 10; i++) {
+        const extra = connections[`youtube_${i}`]
+        if (extra) {
+          channels.push({
+            channelId: extra.channelId || '',
+            channelName: extra.channelName || `YouTube Canal ${i + 1}`,
+          })
+        }
+      }
+      setYtChannels(channels)
+      if (channels.length > 0) setSelectedChannel(channels[0].channelId)
     } catch {}
   }, [])
 
@@ -298,15 +315,33 @@ export default function MangaVideoPage() {
             <div className='mb-4'>
               <label className='text-xs font-medium text-gray-600 block mb-1'>📺 Canal YouTube Destino</label>
               {ytChannels.length > 0 ? (
-                <div className='p-3 bg-green-50 rounded-lg border border-green-200'>
-                  <div className='flex items-center gap-2'>
-                    <Youtube className='w-4 h-4 text-red-600' />
-                    <span className='text-sm font-medium text-gray-900'>
-                      {ytChannels[0].channelName}
-                    </span>
-                    <CheckCircle className='w-3.5 h-3.5 text-green-500 ml-auto' />
-                  </div>
-                  <p className='text-[10px] text-green-600 mt-1'>ID: {ytChannels[0].channelId}</p>
+                <div className='space-y-2'>
+                  {ytChannels.map((ch) => (
+                    <button
+                      key={ch.channelId}
+                      onClick={() => setSelectedChannel(ch.channelId)}
+                      className={`w-full p-3 rounded-lg border-2 transition text-left ${
+                        selectedChannel === ch.channelId
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-gray-200 hover:border-gray-300 bg-white'
+                      }`}
+                    >
+                      <div className='flex items-center gap-2'>
+                        <Youtube className='w-4 h-4 text-red-600' />
+                        <span className='text-sm font-medium text-gray-900'>{ch.channelName}</span>
+                        {selectedChannel === ch.channelId && (
+                          <CheckCircle className='w-3.5 h-3.5 text-green-500 ml-auto' />
+                        )}
+                      </div>
+                      <p className='text-[10px] text-gray-500 mt-0.5'>ID: {ch.channelId}</p>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => window.location.href = '/dashboard/connections'}
+                    className='w-full p-2 rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 hover:border-amber-400 hover:text-amber-600 transition'
+                  >
+                    + Adicionar outro canal YouTube
+                  </button>
                 </div>
               ) : (
                 <div className='p-3 bg-amber-50 rounded-lg border border-amber-200'>
