@@ -6,7 +6,7 @@ import { action } from "./_generated/server";
 // Lê o motor configurado e aciona a pipeline correta
 // ═══════════════════════════════════════════════════════════════
 
-type MotorType = "animation_2d" | "url_clips" | "stock_video" | "static_post";
+type MotorType = "animation_2d" | "url_clips" | "stock_video" | "static_post" | "manga_video";
 
 interface ChannelConfig {
   niche: string;
@@ -390,6 +390,83 @@ JSON (sem markdown):
 }
 
 // ═══════════════════════════════════════════════════════════════
+// MOTOR 5: SLIDESHOW DE MANGÁ/MANHWA
+// ═══════════════════════════════════════════════════════════════
+
+async function motorMangaVideo(
+  geminiKey: string,
+  pixabayKey: string | undefined,
+  config: ChannelConfig
+): Promise<RenderResult> {
+  console.log("📖 Motor 5: Manga/Manhwa Slideshow");
+
+  const scriptPrompt = `Você é um roteirista de VÍDEOS do tipo SLIDESHOW de mangá/manhwa para ${config.platform}.
+
+Nicho: ${config.niche}
+${config.systemPrompt ? `Instruções: ${config.systemPrompt}` : ""}
+
+Gere um roteiro para um vídeo slideshow de páginas de mangá/manhwa.
+Cada "cena" deve descrever uma página ou quadro do mangá.
+Total: 30-90 segundos (páginas ficam 3-5 segundos cada).
+Inclua transições suaves estilo virar página.
+
+JSON (sem markdown):
+{
+  "title": "título do vídeo",
+  "hook": "gancho inicial",
+  "scenes": [{
+    "narration": "narração sobre a página",
+    "visualDescription": "descrição da página do mangá para buscar imagem",
+    "duration": 4,
+    "musicMood": "epic",
+    "imageQuery": "palavras-chave para buscar imagem"
+  }],
+  "caption": "legenda",
+  "hashtags": ["#manga","#manhwa","#anime","#shorts"],
+  "totalDuration": 45
+}`;
+
+  const scriptText = await callGemini(geminiKey, scriptPrompt, 4096);
+  const script = parseJSON(scriptText, {
+    title: "Manga Slideshow",
+    hook: "",
+    scenes: [{ narration: scriptText, visualDescription: "manga page", duration: 4, musicMood: "epic" }],
+    caption: "",
+    hashtags: ["#manga", "#manhwa", "#anime", "#shorts"],
+    totalDuration: 30,
+  });
+
+  // Buscar imagens de mangá (ilustrações/artwork)
+  let footageUrls: string[] = [];
+  if (pixabayKey) {
+    for (const scene of script.scenes) {
+      const query = (scene as { imageQuery?: string }).imageQuery || scene.visualDescription;
+      const urls = await fetchStockImages(pixabayKey, query + " manga anime illustration", 1);
+      footageUrls.push(...urls);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  let musicUrl = "";
+  if (pixabayKey && script.scenes.length > 0) {
+    musicUrl = await fetchMusic(pixabayKey, (script.scenes[0] as { musicMood?: string }).musicMood || "epic");
+  }
+
+  const narrationText = script.scenes.map((s: { narration: string }) => s.narration).join("\n\n");
+
+  return {
+    success: true,
+    motorType: "manga_video",
+    title: script.title,
+    caption: script.caption,
+    hashtags: script.hashtags,
+    script: narrationText,
+    narrationText,
+    footageUrls,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ACTION PRINCIPAL: ROTEADOR INTELIGENTE DE MÍDIA
 // ═══════════════════════════════════════════════════════════════
 
@@ -401,7 +478,8 @@ export const routeToMotor = action({
       v.literal("animation_2d"),
       v.literal("url_clips"),
       v.literal("stock_video"),
-      v.literal("static_post")
+      v.literal("static_post"),
+      v.literal("manga_video")
     ),
     platform: v.union(v.literal("youtube"), v.literal("instagram"), v.literal("tiktok")),
     targetUrl: v.optional(v.string()),
@@ -445,6 +523,9 @@ export const routeToMotor = action({
         break;
       case "static_post":
         result = await motorStaticPost(geminiKey, pixabayKey, config);
+        break;
+      case "manga_video":
+        result = await motorMangaVideo(geminiKey, pixabayKey, config);
         break;
       default:
         throw new Error(`Motor desconhecido: ${args.motorType}`);
@@ -495,6 +576,14 @@ export const getAvailableMotors = action({
           icon: "🖼️",
           bestFor: "Posts de Instagram, LinkedIn, Frases",
           examples: ["Frase motivacional", "Dica rápida", "Anúncio"],
+        },
+        {
+          id: "manga_video",
+          name: "Slideshow de Mangá/Manhwa",
+          description: "Monta vídeo slideshow com páginas de mangá, transições slideleft e narração",
+          icon: "📖",
+          bestFor: "Canais de mangá, manhwa, anime, história em quadrinhos",
+          examples: ["Resumo de capítulo", "Spoilers", "Top moments"],
         },
       ],
     };

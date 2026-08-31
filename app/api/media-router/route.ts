@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // Roteador Inteligente de Mídia — Aciona o motor correto
 // ═══════════════════════════════════════════════════════════════
 
-type MotorType = 'animation_2d' | 'url_clips' | 'stock_video' | 'static_post'
+type MotorType = 'animation_2d' | 'url_clips' | 'stock_video' | 'static_post' | 'manga_video'
 
 interface MotorConfig {
   animationStyle?: string
@@ -307,6 +307,65 @@ JSON (sem markdown):
   }
 }
 
+// ─── Motor 5: Manga/Manhwa Slideshow ──────────────────────
+
+async function motorMangaVideo(geminiKey: string, pixabayKey: string | undefined, niche: string, systemPrompt: string, platform: string) {
+  const scriptPrompt = `Você é um roteirista de VÍDEOS do tipo SLIDESHOW de mangá/manhwa para ${platform}.
+
+Nicho: ${niche}
+${systemPrompt ? `Instruções: ${systemPrompt}` : ""}
+
+Gere um roteiro para um vídeo slideshow de páginas de mangá/manhwa.
+Cada "cena" deve descrever uma página ou quadro do mangá.
+Total: 30-90 segundos (páginas ficam 3-5 segundos cada).
+Inclua transições suaves estilo virar página.
+
+JSON (sem markdown):
+{
+  "title": "título do vídeo",
+  "hook": "gancho inicial",
+  "scenes": [{
+    "narration": "narração sobre a página",
+    "visualDescription": "descrição da página do mangá",
+    "duration": 4,
+    "musicMood": "epic",
+    "imageQuery": "palavras-chave para buscar imagem"
+  }],
+  "caption": "legenda",
+  "hashtags": ["#manga","#manhwa","#anime","#shorts"],
+  "totalDuration": 45
+}`
+
+  const scriptText = await callGemini(geminiKey, scriptPrompt, 4096)
+  const script = parseJSON(scriptText, {
+    title: 'Manga Slideshow', hook: '',
+    scenes: [{ narration: scriptText, visualDescription: 'manga page', duration: 4, musicMood: 'epic' }],
+    caption: '', hashtags: ['#manga', '#manhwa', '#anime', '#shorts'], totalDuration: 30,
+  })
+
+  let footageUrls: string[] = []
+  if (pixabayKey) {
+    for (const scene of script.scenes) {
+      const query = (scene as { imageQuery?: string }).imageQuery || scene.visualDescription
+      const urls = await fetchStockImages(pixabayKey, query + ' manga anime illustration', 1)
+      footageUrls.push(...urls)
+      await new Promise(r => setTimeout(r, 200))
+    }
+  }
+
+  let musicUrl = ''
+  if (pixabayKey && script.scenes.length > 0) {
+    musicUrl = await fetchMusic(pixabayKey, (script.scenes[0] as { musicMood?: string }).musicMood || 'epic')
+  }
+
+  return {
+    success: true, motorType: 'manga_video',
+    title: script.title, caption: script.caption, hashtags: script.hashtags,
+    script: script.scenes.map((s: { narration: string }) => s.narration).join('\n\n'),
+    footageUrls, musicUrl,
+  }
+}
+
 // ─── POST handler ────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -344,6 +403,9 @@ export async function POST(request: NextRequest) {
       case 'static_post':
         result = await motorStaticPost(geminiKey, pixabayKey, niche, systemPrompt || '')
         break
+      case 'manga_video':
+        result = await motorMangaVideo(geminiKey, pixabayKey, niche, systemPrompt || '', platform)
+        break
       default:
         return NextResponse.json({ error: `Motor desconhecido: ${motorType}` }, { status: 400 })
     }
@@ -372,6 +434,7 @@ export async function GET() {
       { id: 'url_clips', name: 'Corte por URL', icon: '✂️', bestFor: 'Podcasts, reações, cortes de lives' },
       { id: 'stock_video', name: 'Stock + Voz IA', icon: '🎬', bestFor: 'Educativo, documentários, motivação' },
       { id: 'static_post', name: 'Post Estático', icon: '🖼️', bestFor: 'Instagram, LinkedIn, frases' },
+      { id: 'manga_video', name: 'Slideshow Mangá', icon: '📖', bestFor: 'Mangá, manhwa, anime, história em quadrinhos' },
     ],
   })
 }

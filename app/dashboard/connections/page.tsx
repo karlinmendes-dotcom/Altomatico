@@ -32,7 +32,7 @@ function removeConnection(platform: string) {
 interface ChannelConfig {
   niche: string
   systemPrompt: string
-  motorType: 'animation_2d' | 'url_clips' | 'stock_video' | 'static_post'
+  motorType: 'animation_2d' | 'url_clips' | 'stock_video' | 'static_post' | 'manga_video'
   mode: 'AUTO_GENERATED' | 'URL_CLIPS'
   targetUrl: string
   postFrequency: number
@@ -102,10 +102,17 @@ export default function ConnectionsPage() {
   const [configNiche, setConfigNiche] = useState('')
   const [configPrompt, setConfigPrompt] = useState('')
   const [configMode, setConfigMode] = useState<'AUTO_GENERATED' | 'URL_CLIPS'>('AUTO_GENERATED')
-  const [configMotorType, setConfigMotorType] = useState<'animation_2d' | 'url_clips' | 'stock_video' | 'static_post'>('stock_video')
+  const [configMotorType, setConfigMotorType] = useState<'animation_2d' | 'url_clips' | 'stock_video' | 'static_post' | 'manga_video'>('stock_video')
   const [configTargetUrl, setConfigTargetUrl] = useState('')
   const [configFrequency, setConfigFrequency] = useState(1)
   const [configAutoPublish, setConfigAutoPublish] = useState(false)
+
+  // Audio config state (for manga_video, stock_video, animation_2d)
+  const [configAudioEnabled, setConfigAudioEnabled] = useState(true)
+  const [configBgMusicVolume, setConfigBgMusicVolume] = useState(15)
+  const [configFadeOutDuration, setConfigFadeOutDuration] = useState(1.5)
+  const [configMusicQuery, setConfigMusicQuery] = useState('')
+
   const [configSaved, setConfigSaved] = useState(false)
 
   // Generate now state
@@ -1155,6 +1162,111 @@ export default function ConnectionsPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Tipo de Motor (só aparece no modo AUTO_GENERATED) */}
+                {configMode === 'AUTO_GENERATED' && (
+                  <div>
+                    <label className='block text-xs font-medium text-gray-700 mb-2'>🎬 Tipo de Motor</label>
+                    <div className='grid grid-cols-2 gap-2'>
+                      {[
+                        { id: 'animation_2d' as const, icon: '🎨', name: 'Animação 2D', desc: 'Stick figures cômicos' },
+                        { id: 'manga_video' as const, icon: '📖', name: 'Slideshow Mangá', desc: 'Páginas de mangá/manhwa' },
+                        { id: 'stock_video' as const, icon: '🎬', name: 'Stock + Voz IA', desc: 'Clips de banco + TTS' },
+                        { id: 'static_post' as const, icon: '🖼️', name: 'Post Estático', desc: 'Imagem + texto fixo' },
+                      ].map(motor => (
+                        <button
+                          key={motor.id}
+                          onClick={() => {
+                            localStorage.setItem(`altomatico_motor_${editingConfig}`, motor.id)
+                          }}
+                          className={`p-3 rounded-xl border-2 transition text-left text-[11px] ${
+                            (typeof window !== 'undefined' && localStorage.getItem(`altomatico_motor_${editingConfig}`)) === motor.id
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <span className='text-base'>{motor.icon}</span>
+                          <div className='font-bold text-gray-900 mt-0.5'>{motor.name}</div>
+                          <div className='text-[10px] text-gray-500'>{motor.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══ Configuração de Áudio (motores de vídeo) ═══ */}
+                {configMode === 'AUTO_GENERATED' && (configMotorType === 'manga_video' || configMotorType === 'stock_video' || configMotorType === 'animation_2d') && (
+                  <div className='bg-purple-50 border border-purple-200 rounded-xl p-4'>
+                    <div className='flex items-center justify-between mb-3'>
+                      <label className='text-xs font-bold text-purple-700'>🎵 Configuração de Áudio</label>
+                      <label className='relative inline-flex items-center cursor-pointer'>
+                        <input
+                          type='checkbox'
+                          checked={configAudioEnabled}
+                          onChange={e => setConfigAudioEnabled(e.target.checked)}
+                          className='sr-only peer'
+                        />
+                        <div className='w-9 h-5 bg-gray-300 rounded-full peer peer-checked:bg-purple-500 transition'></div>
+                        <div className='absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full peer-checked:translate-x-4 transition'></div>
+                      </label>
+                    </div>
+
+                    {configAudioEnabled && (
+                      <div className='space-y-3'>
+                        {/* Volume da música de fundo */}
+                        <div>
+                          <div className='flex items-center justify-between mb-1'>
+                            <label className='text-[11px] text-gray-600'>🔊 Volume da Música de Fundo</label>
+                            <span className='text-[11px] font-bold text-purple-600'>{configBgMusicVolume}%</span>
+                          </div>
+                          <input
+                            type='range'
+                            min={0}
+                            max={50}
+                            value={configBgMusicVolume}
+                            onChange={e => setConfigBgMusicVolume(parseInt(e.target.value))}
+                            className='w-full h-1.5 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-500'
+                          />
+                          <p className='text-[10px] text-gray-400 mt-0.5'>Recomendado: 10-20% (suave ao fundo)</p>
+                        </div>
+
+                        {/* Fade-out */}
+                        <div>
+                          <div className='flex items-center justify-between mb-1'>
+                            <label className='text-[11px] text-gray-600'>🔀 Duração do Fade-Out</label>
+                            <span className='text-[11px] font-bold text-purple-600'>{configFadeOutDuration}s</span>
+                          </div>
+                          <input
+                            type='range'
+                            min={0}
+                            max={5}
+                            step={0.5}
+                            value={configFadeOutDuration}
+                            onChange={e => setConfigFadeOutDuration(parseFloat(e.target.value))}
+                            className='w-full h-1.5 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-500'
+                          />
+                          <p className='text-[10px] text-gray-400 mt-0.5'>Esfumaçamento suave no final do vídeo</p>
+                        </div>
+
+                        {/* Query de música */}
+                        <div>
+                          <label className='text-[11px] text-gray-600 block mb-1'>🎵 Estilo da Música</label>
+                          <Input
+                            placeholder={configMotorType === 'manga_video' ? 'epic lofi ambient' : configMotorType === 'animation_2d' ? 'cômico instrumental alegre' : 'inspirador lofi'}
+                            value={configMusicQuery}
+                            onChange={e => setConfigMusicQuery(e.target.value)}
+                            className='text-xs'
+                          />
+                          <p className='text-[10px] text-gray-400 mt-0.5'>Busca música no Pixabay (deixe vazio para automático)</p>
+                        </div>
+
+                        <div className='bg-purple-100 rounded-lg p-2'>
+                          <p className='text-[10px] text-purple-600'>ℹ️ Música buscada automaticamente no Pixabay (grátis). Loop automático se a faixa for mais curta que o vídeo. Fade-out suave no final.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* URL-alvo (só aparece no modo URL_CLIPS) */}
                 {configMode === 'URL_CLIPS' && (

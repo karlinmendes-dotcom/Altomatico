@@ -368,7 +368,8 @@ export default defineSchema({
       v.literal("animation_2d"), // Motor 1: Animação 2D / Stick Figure
       v.literal("url_clips"), // Motor 2: Corte de vídeo por URL
       v.literal("stock_video"), // Motor 3: Vídeos de banco (Pexels/Pixabay + TTS)
-      v.literal("static_post") // Motor 4: Posts estáticos / Carrosséis
+      v.literal("static_post"), // Motor 4: Posts estáticos / Carrosséis
+      v.literal("manga_video") // Motor 5: Slideshow de mangá/manhwa
     )),
     mode: v.optional(v.union(v.literal("AUTO_GENERATED"), v.literal("URL_CLIPS"))), // Compatibilidade
     targetUrl: v.optional(v.string()), // URL do vídeo para recortar (modo URL_CLIPS)
@@ -422,7 +423,8 @@ export default defineSchema({
       v.literal("animation_2d"),
       v.literal("url_clips"),
       v.literal("stock_video"),
-      v.literal("static_post")
+      v.literal("static_post"),
+      v.literal("manga_video")
     )),
     status: v.union(
       v.literal("draft"),
