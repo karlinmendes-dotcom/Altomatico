@@ -21,6 +21,15 @@ const HEADERS = {
   'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
 }
 
+/**
+ * Envelopa URL de imagem no proxy para bypass de CORS.
+ * O Canvas API precisa de crossOrigin='anonymous', que requer
+ * que o servidor retorne CORS headers. O proxy resolve isso.
+ */
+function proxyImageUrl(originalUrl: string): string {
+  return `/api/manga-image-proxy?url=${encodeURIComponent(originalUrl)}`
+}
+
 // ═══════════════════════════════════════════════════════════════
 // SITE 1: MangaDex API (público, sem autenticação)
 // URLs: mangadex.org/title/[id]/[slug] ou mangadex.org/chapter/[id]
@@ -84,7 +93,7 @@ async function scrapeMangadex(url: string, customTitle?: string): Promise<Scrape
     return { success: false, images: [], title: customTitle || 'Manga', source: 'mangadex', totalPages: 0, error: 'Capítulo sem imagens.' }
   }
 
-  const images = pages.map((p: string) => `${baseUrl}/data/${hash}/${p}`)
+  const images = pages.map((p: string) => proxyImageUrl(`${baseUrl}/data/${hash}/${p}`))
 
   let title = customTitle || ''
   if (!title && mangaId) {
@@ -133,7 +142,8 @@ async function scrapeManhaweb(url: string, customTitle?: string): Promise<Scrape
     }
 
     const data = await res.json()
-    const images: string[] = data.chapter?.img || []
+    const rawImages: string[] = data.chapter?.img || []
+    const images = rawImages.map((img: string) => proxyImageUrl(img))
     const title = customTitle || data.name || 'Manhwa'
 
     if (images.length === 0) {
