@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   BookOpen, Link2, Clock, Youtube, Music, Wand2, Loader2,
   CheckCircle, AlertCircle, Play, Image, Settings, ArrowLeft,
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { renderMangaSlideshow, downloadVideoBlob, type RenderProgress } from '@/lib/manga-client-renderer'
 
 // ═══════════════════════════════════════════════════════════════
 // MangaUrlVideo — Página dedicada: Mangá/Manhwa → Vídeo
@@ -53,6 +54,10 @@ export default function MangaVideoPage() {
   const [result, setResult] = useState<QueueItem | null>(null)
   const [scrapedImages, setScrapedImages] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [renderProgress, setRenderProgress] = useState<RenderProgress | null>(null)
+  const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null)
+  const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   // ─── Carregar canais YouTube do localStorage ────────────
   useEffect(() => {
@@ -109,45 +114,58 @@ export default function MangaVideoPage() {
         throw new Error('Nenhuma imagem encontrada no site')
       }
 
-      // ═══ FASE 2: Render ═══
+      // ═══ FASE 2: Renderizar vídeo no navegador (Canvas + MediaRecorder) ═══
       setPhase('rendering')
-      addLog('🎬 Montando vídeo com FFmpeg...')
+      addLog('🎬 Renderizando vídeo no navegador...')
+      addLog('📺 Formato: 1080x1920 (vertical/Shorts)')
+      addLog('🔄 Transições: slideleft entre páginas')
 
-      const renderRes = await fetch('/api/manga-render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: mangaUrl,
-          title: mangaTitle || scrapeData.title,
-          durationPerPage,
-          youtubeChannel: selectedChannel,
-          enableAudio,
-          bgMusicVolume: bgMusicVolume / 100,
-          transitionType: 'slideleft',
-          transitionDuration: 0.6,
-        }),
+      const pages = scrapeData.images.map((img: string, i: number) => ({
+        imageUrl: img,
+        dialogue: scrapeData.dialogues?.[i] || '',
+      }))
+
+      const blob = await renderMangaSlideshow({
+        pages,
+        durationPerPage,
+        transitionDuration: 0.6,
+        canvasWidth: 1080,
+        canvasHeight: 1920,
+        bgMusicVolume: enableAudio ? bgMusicVolume / 100 : 0,
+      }, (progress: RenderProgress) => {
+        setRenderProgress(progress)
+        if (progress.phase === 'rendering') {
+          addLog(`🖌️ ${progress.message}`)
+        }
       })
 
-      const renderData = await renderRes.json()
+      setVideoBlob(blob)
+      const blobUrl = URL.createObjectURL(blob)
+      setVideoBlobUrl(blobUrl)
 
-      if (!renderData.success) {
-        throw new Error(renderData.error || 'Falha na renderização')
-      }
-
-      addLog(`✅ Vídeo pronto! ${renderData.renderConfig.totalDuration}s de duração`)
-      addLog(`🎵 Áudio: ${renderData.renderConfig.bgMusicUrl}`)
+      addLog(`✅ Vídeo pronto! ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
+      addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
 
       // ═══ FASE 3: Salvar na fila ═══
       setPhase('saving')
       addLog('💾 Salvando na fila de conteúdo...')
 
-      const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
       const newItem: QueueItem = {
-        ...renderData.queueItem,
+        id: `manga_${Date.now()}`,
+        title: mangaTitle || scrapeData.title || 'Mangá Video',
+        description: `Capítulo de ${scrapeData.totalPages} páginas`,
+        platform: 'youtube',
+        motorType: 'manga_video',
+        status: 'rascunho',
+        mediaUrl: blobUrl,
+        thumbnailUrl: scrapeData.images[0] || '',
         images: scrapeData.images,
         totalPages: scrapeData.totalPages,
         durationPerPage,
+        createdAt: Date.now(),
       }
+
+      const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
       queue.unshift(newItem)
       localStorage.setItem('altomatico_queue', JSON.stringify(queue))
 
@@ -174,6 +192,16 @@ export default function MangaVideoPage() {
     setError(null)
     setLogs([])
     setPhase('idle')
+    setRenderProgress(null)
+    setVideoBlobUrl(null)
+    setVideoBlob(null)
+  }
+
+  // ─── Download do vídeo ──────────────────────────────────
+  const handleDownload = () => {
+    if (videoBlob) {
+      downloadVideoBlob(videoBlob, `${mangaTitle || 'manga'}.webm`)
+    }
   }
 
   return (
@@ -388,11 +416,62 @@ export default function MangaVideoPage() {
             </div>
           )}
 
+          {/* Player do Vídeo (durante e após renderização) */}
+          {(videoBlobUrl || (renderProgress && renderProgress.phase === 'rendering')) && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
+              <h3 className='font-bold text-gray-900 mb-3 flex items-center gap-2'>
+                {videoBlobUrl ? (
+                  <><Play className='w-4 h-4 text-green-500' /> Preview do Vídeo</>
+                ) : (
+                  <><Loader2 className='w-4 h-4 text-amber-500 animate-spin' /> Renderizando...</>
+                )}
+              </h3>
+
+              {/* Barra de progresso */}
+              {renderProgress && (
+                <div className='mb-3'>
+                  <div className='flex items-center justify-between mb-1'>
+                    <span className='text-xs text-gray-500'>{renderProgress.message}</span>
+                    <span className='text-xs font-bold text-amber-600'>{Math.round(renderProgress.percent)}%</span>
+                  </div>
+                  <div className='w-full bg-gray-200 rounded-full h-2'>
+                    <div
+                      className='bg-gradient-to-r from-amber-500 to-orange-500 h-2 rounded-full transition-all duration-300'
+                      style={{ width: `${renderProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Player de vídeo */}
+              {videoBlobUrl && (
+                <div className='rounded-xl overflow-hidden bg-black mb-3'>
+                  <video
+                    ref={videoRef}
+                    src={videoBlobUrl}
+                    controls
+                    className='w-full max-h-[500px]'
+                    poster={scrapedImages[0] || undefined}
+                  />
+                </div>
+              )}
+
+              {/* Botões */}
+              {videoBlobUrl && (
+                <div className='flex gap-2'>
+                  <Button onClick={handleDownload} variant='outline' className='flex-1 text-xs'>
+                    <Download className='w-3 h-3 mr-1' /> Baixar .webm
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Resultado */}
           {result && (
             <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
               <h3 className='font-bold text-gray-900 mb-3 flex items-center gap-2'>
-                <Play className='w-4 h-4 text-green-500' /> Vídeo Pronto!
+                <CheckCircle className='w-4 h-4 text-green-500' /> Vídeo Pronto!
               </h3>
 
               <div className='bg-green-50 rounded-xl p-4 mb-3 border border-green-200'>

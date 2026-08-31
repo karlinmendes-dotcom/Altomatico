@@ -84,6 +84,105 @@ function extractImageUrl(img: { attribs?: Record<string, string> }): string | nu
   }
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * MangaDex API Integration — Suporte nativo a URLs do MangaDex
+ * URLs aceitas:
+ *   - https://mangadex.org/title/[id]/[slug]
+ *   - https://mangadex.org/chapter/[id]
+ *   - URL direta de capítulo com chapterId
+ * ═══════════════════════════════════════════════════════════════
+ */
+async function scrapeMangadex(url: string, customTitle?: string): Promise<ScrapeResult> {
+  const parsedUrl = new URL(url)
+  const pathParts = parsedUrl.pathname.split('/').filter(Boolean)
+
+  // Detectar se é URL de capítulo ou de título
+  let mangaId: string | null = null
+  let chapterId: string | null = null
+
+  if (pathParts[0] === 'chapter' && pathParts[1]) {
+    chapterId = pathParts[1]
+  } else if (pathParts[0] === 'title' && pathParts[1]) {
+    mangaId = pathParts[1]
+  } else {
+    // Tentar extrair UUID do path
+    const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    const match = url.match(uuidPattern)
+    if (match) {
+      // Determinar se é manga ou capítulo pela posição
+      if (pathParts.includes('chapter')) {
+        chapterId = match[0]
+      } else {
+        mangaId = match[0]
+      }
+    }
+  }
+
+  const headers = { 'User-Agent': 'Altomatico/1.0 (manga-video-module)' }
+
+  // Se temos chapterId, buscar página diretamente
+  if (chapterId) {
+    const chapterRes = await fetch(`https://api.mangadex.org/chapter/${chapterId}?includes[]=manga`, { headers })
+    if (chapterRes.ok) {
+      const chapterData = await chapterRes.json()
+      const mangaRel = chapterData.data?.relationships?.find((r: { type: string }) => r.type === 'manga')
+      mangaId = mangaRel?.id || null
+    }
+  }
+
+  // Se não temos capítulo, pegar o primeiro capítulo disponível do manga
+  if (!chapterId && mangaId) {
+    const feedRes = await fetch(
+      `https://api.mangadex.org/manga/${mangaId}/feed?limit=1&order[chapter]=asc&translatedLanguage[]=en&translatedLanguage[]=pt-br`,
+      { headers }
+    )
+    if (feedRes.ok) {
+      const feedData = await feedRes.json()
+      if (feedData.data?.length > 0) {
+        chapterId = feedData.data[0].id
+      }
+    }
+  }
+
+  if (!chapterId) {
+    return { success: false, images: [], title: customTitle || 'Manga', source: 'mangadex', totalPages: 0, error: 'Não foi possível encontrar um capítulo. Verifique a URL.' }
+  }
+
+  // Buscar imagens do capítulo via at-home server
+  const atHomeRes = await fetch(`https://api.mangadex.org/at-home/server/${chapterId}`, { headers })
+  if (!atHomeRes.ok) {
+    return { success: false, images: [], title: customTitle || 'Manga', source: 'mangadex', totalPages: 0, error: 'Falha ao buscar imagens do capítulo.' }
+  }
+
+  const atHomeData = await atHomeRes.json()
+  const baseUrl = atHomeData.baseUrl || ''
+  const hash = atHomeData.chapter?.hash || ''
+  const pages: string[] = atHomeData.chapter?.data || []
+
+  if (pages.length === 0) {
+    return { success: false, images: [], title: customTitle || 'Manga', source: 'mangadex', totalPages: 0, error: 'Capítulo sem imagens.' }
+  }
+
+  // Montar URLs completas
+  const images = pages.map((p: string) => `${baseUrl}/data/${hash}/${p}`)
+
+  // Buscar título do mangá
+  let title = customTitle || ''
+  if (!title && mangaId) {
+    const mangaRes = await fetch(`https://api.mangadex.org/manga/${mangaId}?includes[]=cover_art`, { headers })
+    if (mangaRes.ok) {
+      const mangaData = await mangaRes.json()
+      const t = mangaData.data?.attributes?.title
+      title = t?.en || t?.['pt-br'] || t?.ja || t?.['ja-ro'] || Object.values(t || {})[0] as string || 'Manga'
+    }
+  }
+
+  console.log(`[manga-scrape] MangaDex: ${images.length} páginas de "${title}"`)
+
+  return { success: true, images, title: title || 'Manga', source: 'mangadex', totalPages: images.length }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -103,9 +202,14 @@ export async function POST(request: NextRequest) {
 
     console.log(`[manga-scrape] Iniciando scraping de: ${url}`)
 
-    // Detectar site e usar seletores apropriados
+    // ═══ MangaDex API (suporte nativo) ═══
+    if (parsedUrl.hostname.includes('mangadex')) {
+      const result = await scrapeMangadex(url, customTitle)
+      return NextResponse.json(result)
+    }
+
+    // ═══ Sites genéricos (HTML scraping) ═══
     const siteKey = detectSite(url)
-    const selectors = SITE_SELECTORS[siteKey] || SITE_SELECTORS.default
 
     // Buscar HTML da página
     const response = await fetch(url, {
@@ -124,20 +228,15 @@ export async function POST(request: NextRequest) {
     }
 
     const html = await response.text()
-
-    // Extrair imagens usando regex (mais robusto que Cheerio quando não temos o pacote)
     const images: string[] = []
     const baseUrl = parsedUrl.origin
 
-    // Padrão 1: <img src="..." /> com seletores comuns de manga
+    // Extrair imagens via regex
     const imgRegex = /<img[^>]+(?:class|id|data-src|loading)[^>]*>/gi
     const allImgs = html.match(imgRegex) || []
-
-    // Padrão 2: Todas as tags img (fallback)
     const fallbackImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
     let match: RegExpExecArray | null
 
-    // Primeiro: tentar extrair com seletores específicos do site
     for (const imgTag of allImgs) {
       const srcMatch = imgTag.match(/src=["']([^"']+)["']/i) ||
                        imgTag.match(/data-src=["']([^"']+)["']/i) ||
@@ -146,38 +245,27 @@ export async function POST(request: NextRequest) {
         let imgUrl = srcMatch[1]
         if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl
         else if (!imgUrl.startsWith('http')) imgUrl = baseUrl + (imgUrl.startsWith('/') ? '' : '/') + imgUrl
-
-        // Filtrar imagens que parecem ser páginas do mangá
-        if (isMangaPageImage(imgUrl)) {
-          images.push(imgUrl)
-        }
+        if (isMangaPageImage(imgUrl)) images.push(imgUrl)
       }
     }
 
-    // Se não encontrou com seletores específicos, usar fallback
     if (images.length === 0) {
       while ((match = fallbackImgRegex.exec(html)) !== null) {
         let imgUrl = match[1]
         if (imgUrl.startsWith('//')) imgUrl = 'https:' + imgUrl
         else if (!imgUrl.startsWith('http')) imgUrl = baseUrl + (imgUrl.startsWith('/') ? '' : '/') + imgUrl
-
-        if (isMangaPageImage(imgUrl)) {
-          images.push(imgUrl)
-        }
+        if (isMangaPageImage(imgUrl)) images.push(imgUrl)
       }
     }
 
-    // Extrair título
     let title = customTitle || ''
     if (!title) {
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
       title = titleMatch ? titleMatch[1].trim() : parsedUrl.pathname.split('/').filter(Boolean).pop() || 'Manga Chapter'
     }
 
-    // Remover duplicatas mantendo ordem
     const uniqueImages = [...new Set(images)]
-
-    console.log(`[manga-scrape] Encontradas ${uniqueImages.length} imagens`)
+    console.log(`[manga-scrape] Encontradas ${uniqueImages.length} imagens (HTML)`)
 
     if (uniqueImages.length === 0) {
       return NextResponse.json({
@@ -186,7 +274,7 @@ export async function POST(request: NextRequest) {
         title,
         source: parsedUrl.hostname,
         totalPages: 0,
-        error: 'Nenhuma imagem encontrada. O site pode usar carregamento dinâmico (JavaScript). Tente outro site ou forneça as imagens manualmente.',
+        error: 'Nenhuma imagem encontrada. Para sites que usam JavaScript, tente uma URL do MangaDex (mangadex.org/title/... ou mangadex.org/chapter/...).',
       })
     }
 
