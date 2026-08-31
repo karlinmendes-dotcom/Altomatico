@@ -242,7 +242,33 @@ export default function MangaVideoPage() {
               onChange={e => setMangaTitle(e.target.value)}
               className='text-sm mb-2'
             />
-            <p className='text-[10px] text-gray-400'>Cole a URL de qualquer site de leitura de mangá/manhwa</p>
+            <p className='text-[10px] text-gray-400 mb-2'>Cole a URL de qualquer site de leitura de mangá/manhwa</p>
+
+            {/* URLs de exemplo para teste */}
+            <div className='bg-amber-50 border border-amber-200 rounded-lg p-2'>
+              <p className='text-[10px] font-bold text-amber-700 mb-1'>📋 URLs de teste (clique para usar):</p>
+              <div className='space-y-1'>
+                <button
+                  onClick={() => setMangaUrl('https://manhwaweb.com/leer/realmente-me-estas-diciendo-que-lo-haga_1696088564822-1_01')}
+                  className='block w-full text-left text-[10px] text-blue-600 hover:text-blue-800 hover:underline truncate'
+                >
+                  🔗 ManhwaWeb: Realmente me estás diciendo... (Cap 1)
+                </button>
+                <button
+                  onClick={() => setMangaUrl('https://manhwaweb.com/leer/It_will_never_break_1760360601083-1_01')}
+                  className='block w-full text-left text-[10px] text-blue-600 hover:text-blue-800 hover:underline truncate'
+                >
+                  🔗 ManhwaWeb: You Won't Break Me (Cap 1)
+                </button>
+                <button
+                  onClick={() => setMangaUrl('https://mangadex.org/chapter/d1536047-2594-4d8e-98f5-91ae3580bdf6')}
+                  className='block w-full text-left text-[10px] text-purple-600 hover:text-purple-800 hover:underline truncate'
+                >
+                  📖 MangaDex: Yomi no Tsugai (Cap 1)
+                </button>
+              </div>
+              <p className='text-[9px] text-amber-600 mt-1'>⚠️ ZonaTMO tem proteção Cloudflare — use as alternativas acima</p>
+            </div>
           </div>
 
           {/* Configurações */}
