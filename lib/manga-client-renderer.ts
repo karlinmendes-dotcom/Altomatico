@@ -1,8 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
 // Manga Client-Side Renderer — Gera vídeo .webm no navegador
-// Modos:
-//   1. Simple: slideshow com tempo fixo por página
-//   2. Narrated: narração sincronizada com legendas e timing dinâmico
+// Pipeline de áudio completo:
+//   - TTS server-side (Google Translate TTS) → AudioBuffer
+//   - Música de fundo (Pixabay) → AudioBuffer
+//   - SFX (Web Audio API oscilators) → AudioBuffer
+//   - Mix via AudioContext → MediaStreamDestination → MediaRecorder
 // ═══════════════════════════════════════════════════════════════
 
 export interface MangaPage {
@@ -25,21 +27,19 @@ export interface RenderConfig {
   transitionDuration: number
   canvasWidth: number
   canvasHeight: number
-  bgMusicUrl?: string
   bgMusicVolume: number
   narrationText?: string
-  /** Modo narrado: segmentos com timing dinâmico */
   segments?: NarratedSegment[]
-  /** Ativar narração TTS pelo navegador */
-  enableTTS?: boolean
-  /** Velocidade da fala TTS (0.5 - 2.0) */
-  ttsRate?: number
-  /** Voz TTS */
-  ttsVoice?: string
+  /** Áudio TTS pré-gerado server-side (base64 segments) */
+  ttsAudioSegments?: { base64: string; duration: number; text: string; index: number }[]
+  /** URL da música de fundo */
+  bgMusicUrl?: string
+  /** Ativar SFX */
+  enableSfx?: boolean
 }
 
 export interface RenderProgress {
-  phase: 'loading' | 'rendering' | 'encoding' | 'complete' | 'error'
+  phase: 'loading' | 'audio' | 'rendering' | 'encoding' | 'complete' | 'error'
   currentPage: number
   totalPages: number
   percent: number
@@ -53,7 +53,7 @@ type ProgressCallback = (progress: RenderProgress) => void
 // ═══════════════════════════════════════════════════════════════
 // YouTube Shorts Limits
 // ═══════════════════════════════════════════════════════════════
-export const YOUTUBE_SHORTS_MAX_SECONDS = 55 // Shorts: máx 60s, usamos 55s de margem
+export const YOUTUBE_SHORTS_MAX_SECONDS = 55
 
 export interface MangaPart {
   partNumber: number
@@ -106,22 +106,107 @@ export function splitChapterIntoParts(
   return parts
 }
 
-/**
- * Carrega imagem para HTMLImageElement
- */
+// ═══════════════════════════════════════════════════════════════
+// ÁUDIO: Decodificar base64 para AudioBuffer
+// ═══════════════════════════════════════════════════════════════
+
+async function decodeBase64Audio(audioContext: AudioContext, base64: string): Promise<AudioBuffer> {
+  const binaryString = atob(base64)
+  const bytes = new Uint8Array(binaryString.length)
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+  return await audioContext.decodeAudioData(bytes.buffer)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SFX: Gerar efeitos sonoros com Web Audio API
+// ═══════════════════════════════════════════════════════════════
+
+function generateSfx(
+  audioContext: AudioContext,
+  type: 'punch' | 'boom' | 'reveal' | 'whoosh',
+  duration: number = 0.3
+): AudioBuffer {
+  const sampleRate = audioContext.sampleRate
+  const length = Math.floor(sampleRate * duration)
+  const buffer = audioContext.createBuffer(1, length, sampleRate)
+  const data = buffer.getChannelData(0)
+
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate
+    const envelope = Math.exp(-t * (type === 'boom' ? 8 : 15))
+
+    switch (type) {
+      case 'punch': {
+        // impacto grave + ruído
+        const freq = 80 * Math.exp(-t * 20)
+        data[i] = envelope * (
+          0.6 * Math.sin(2 * Math.PI * freq * t) +
+          0.3 * (Math.random() * 2 - 1) * Math.exp(-t * 25)
+        )
+        break
+      }
+      case 'boom': {
+        // explosão grave
+        const f = 60 * Math.exp(-t * 5)
+        data[i] = envelope * (
+          0.7 * Math.sin(2 * Math.PI * f * t) +
+          0.4 * (Math.random() * 2 - 1) * Math.exp(-t * 10)
+        )
+        break
+      }
+      case 'reveal': {
+        // brilho agudo ascendente
+        const sweep = 800 + 2000 * t / duration
+        data[i] = envelope * 0.4 * Math.sin(2 * Math.PI * sweep * t)
+        break
+      }
+      case 'whoosh': {
+        // varredura de frequência
+        const sweepFreq = 200 + 1500 * (1 - t / duration)
+        data[i] = envelope * (
+          0.3 * Math.sin(2 * Math.PI * sweepFreq * t) +
+          0.2 * (Math.random() * 2 - 1) * envelope
+        )
+        break
+      }
+    }
+  }
+
+  return buffer
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Mapear emoção → SFX
+// ═══════════════════════════════════════════════════════════════
+
+function emotionToSfx(emotion: string): 'punch' | 'boom' | 'reveal' | 'whoosh' | null {
+  switch (emotion) {
+    case 'hook': return 'whoosh'
+    case 'climax': return 'boom'
+    case 'resolution': return 'reveal'
+    default: return null
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Imagem: carregar e desenhar
+// ═══════════════════════════════════════════════════════════════
+
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.crossOrigin = 'anonymous'
+    // NÃO usar crossOrigin aqui — o proxy same-origin já retorna CORS headers.
+    // crossOrigin='anonymous' faz o browser bloquear imagens que retornam
+    // header CORS diferente ou atrasado. Sem ele, as imagens carregam normalmente
+    // e canvas.captureStream() funciona em todos os browsers modernos.
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error(`Falha ao carregar imagem: ${url}`))
     img.src = url
   })
 }
 
-/**
- * Desenha página de mangá no canvas com blur background + imagem centralizada
- */
 function drawMangaPage(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -168,9 +253,6 @@ function drawMangaPage(
   return { drawX, drawY, drawW, drawH }
 }
 
-/**
- * Desenha legenda narrada (centralizada, estilo shorts)
- */
 function drawSubtitle(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -186,7 +268,6 @@ function drawSubtitle(
   const fontSize = Math.floor(width * 0.042)
   ctx.font = `bold ${fontSize}px "Arial Black", "Segoe UI", Arial, sans-serif`
 
-  // Medir e quebrar texto
   const lines: string[] = []
   const words = text.split(' ')
   let currentLine = ''
@@ -212,35 +293,30 @@ function drawSubtitle(
   )
 
   const bubbleX = (width - bubbleW) / 2
-  const bubbleY = height - bubbleH - 80 // Posição inferior
+  const bubbleY = height - bubbleH - 80
 
-  // Fundo do subtítulo com cor baseada na emoção
   const emotionColors: Record<string, string> = {
-    hook: 'rgba(239, 68, 68, 0.9)',    // Vermelho
-    buildup: 'rgba(59, 130, 246, 0.9)', // Azul
-    climax: 'rgba(168, 85, 247, 0.9)',  // Roxo
-    resolution: 'rgba(34, 197, 94, 0.9)', // Verde
-    cta: 'rgba(245, 158, 11, 0.9)',     // Laranja
+    hook: 'rgba(239, 68, 68, 0.9)',
+    buildup: 'rgba(59, 130, 246, 0.9)',
+    climax: 'rgba(168, 85, 247, 0.9)',
+    resolution: 'rgba(34, 197, 94, 0.9)',
+    cta: 'rgba(245, 158, 11, 0.9)',
   }
 
-  // Sombra
   ctx.shadowColor = 'rgba(0,0,0,0.6)'
   ctx.shadowBlur = 12
   ctx.shadowOffsetY = 3
 
-  // Fundo com bordas arredondadas
   ctx.fillStyle = emotionColors[emotion] || 'rgba(0,0,0,0.8)'
   ctx.beginPath()
   ctx.roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 12)
   ctx.fill()
 
-  // Texto branco com contorno preto
   ctx.shadowColor = 'transparent'
   ctx.fillStyle = '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
 
-  // Contorno/preenchimento duplo para legibilidade
   ctx.lineWidth = 4
   ctx.strokeStyle = 'rgba(0,0,0,0.5)'
   lines.forEach((line, i) => {
@@ -253,77 +329,6 @@ function drawSubtitle(
   ctx.restore()
 }
 
-/**
- * Desenha balão de diálogo (para modo simples)
- */
-function drawDialogueBubble(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  width: number,
-  height: number,
-  pageBounds: { drawX: number; drawY: number; drawW: number; drawH: number }
-) {
-  if (!text) return
-
-  ctx.save()
-
-  const maxWidth = pageBounds.drawW * 0.85
-  const fontSize = Math.floor(width * 0.038)
-  ctx.font = `bold ${fontSize}px "Comic Sans MS", "Segoe UI", Arial, sans-serif`
-
-  const lines: string[] = []
-  const words = text.split(' ')
-  let currentLine = ''
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word
-    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-      lines.push(currentLine)
-      currentLine = word
-    } else {
-      currentLine = testLine
-    }
-  }
-  if (currentLine) lines.push(currentLine)
-
-  const lineHeight = fontSize * 1.4
-  const padding = 16
-  const bubbleH = lines.length * lineHeight + padding * 2
-  const bubbleW = Math.min(
-    maxWidth + padding * 2,
-    Math.max(...lines.map(l => ctx.measureText(l).width)) + padding * 2
-  )
-
-  const bubbleX = (width - bubbleW) / 2
-  const bubbleY = pageBounds.drawY + pageBounds.drawH - bubbleH - 20
-
-  ctx.shadowColor = 'rgba(0,0,0,0.4)'
-  ctx.shadowBlur = 10
-  ctx.shadowOffsetY = 3
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
-  ctx.beginPath()
-  ctx.roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 16)
-  ctx.fill()
-
-  ctx.shadowColor = 'transparent'
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)'
-  ctx.lineWidth = 2
-  ctx.stroke()
-
-  ctx.fillStyle = '#1a1a2e'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-  lines.forEach((line, i) => {
-    ctx.fillText(line, width / 2, bubbleY + padding + i * lineHeight)
-  })
-
-  ctx.restore()
-}
-
-/**
- * Desenha barra de progresso inferior
- */
 function drawProgressBar(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -352,18 +357,14 @@ function drawProgressBar(
   ctx.restore()
 }
 
-/**
- * Desenha efeito visual baseado na emoção do segmento
- */
 function drawEmotionOverlay(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   emotion: string,
-  progress: number // 0-1
+  progress: number
 ) {
   if (emotion === 'hook' || emotion === 'climax') {
-    // Flash sutil no início
     if (progress < 0.15) {
       const alpha = (1 - progress / 0.15) * 0.3
       ctx.save()
@@ -376,9 +377,14 @@ function drawEmotionOverlay(
   }
 }
 
-/**
- * Função principal: renderiza slideshow narrado ou simples
- */
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Função principal: renderiza vídeo com áudio completo
+// ═══════════════════════════════════════════════════════════════
+
 export async function renderMangaSlideshow(
   config: RenderConfig,
   onProgress: ProgressCallback
@@ -391,15 +397,15 @@ export async function renderMangaSlideshow(
     canvasHeight = 1920,
     bgMusicVolume = 0.15,
     segments,
-    enableTTS = false,
-    ttsRate = 1.0,
+    ttsAudioSegments,
+    bgMusicUrl,
+    enableSfx = true,
   } = config
 
   if (pages.length === 0) {
     throw new Error('Nenhuma página para renderizar')
   }
 
-  // Determinar se é modo narrado ou simples
   const isNarrated = segments && segments.length > 0
 
   // ═══ FASE 1: Carregar imagens ═══
@@ -411,24 +417,21 @@ export async function renderMangaSlideshow(
     message: 'Carregando imagens do capítulo...',
   })
 
-  // No modo narrado, carregar apenas as imagens selecionadas
   const imagesToLoad = isNarrated
     ? segments.map(s => pages[s.imageIndex]).filter(Boolean)
     : pages
 
   const loadedImages: HTMLImageElement[] = []
-  const totalToLoad = imagesToLoad.length
-
-  for (let i = 0; i < totalToLoad; i++) {
+  for (let i = 0; i < imagesToLoad.length; i++) {
     try {
       const img = await loadImage(imagesToLoad[i].imageUrl)
       loadedImages.push(img)
       onProgress({
         phase: 'loading',
         currentPage: i + 1,
-        totalPages: totalToLoad,
-        percent: ((i + 1) / totalToLoad) * 25,
-        message: `Carregando página ${i + 1}/${totalToLoad}...`,
+        totalPages: imagesToLoad.length,
+        percent: ((i + 1) / imagesToLoad.length) * 20,
+        message: `Carregando página ${i + 1}/${imagesToLoad.length}...`,
       })
     } catch (err) {
       console.warn(`[manga-renderer] Falha ao carregar página ${i + 1}:`, err)
@@ -439,13 +442,13 @@ export async function renderMangaSlideshow(
     throw new Error('Nenhuma imagem pôde ser carregada')
   }
 
-  // ═══ FASE 2: Preparar Canvas + MediaRecorder ═══
+  // ═══ FASE 2: Preparar Canvas + AudioContext ═══
   onProgress({
-    phase: 'rendering',
+    phase: 'audio',
     currentPage: 0,
     totalPages: loadedImages.length,
-    percent: 25,
-    message: isNarrated ? 'Preparando renderer narrado...' : 'Preparando renderer...',
+    percent: 20,
+    message: 'Preparando áudio...',
   })
 
   const canvas = document.createElement('canvas')
@@ -454,60 +457,116 @@ export async function renderMangaSlideshow(
   const ctx = canvas.getContext('2d')!
 
   const fps = 30
-  const stream = canvas.captureStream(fps)
 
-  // ═══ ÁUDIO DE FUNDO ═══
-  let audioContext: AudioContext | null = null
-  let bgMusicElement: HTMLAudioElement | null = null
+  // ═══ ÁUDIO: AudioContext centralizado ═══
+  const audioCtx = new AudioContext()
+  const audioDestination = audioCtx.createMediaStreamDestination()
 
-  if (bgMusicVolume > 0) {
+  // Mixmaster: tudo passa por este gain
+  const masterGain = audioCtx.createGain()
+  masterGain.gain.value = 1.0
+  masterGain.connect(audioDestination)
+
+  // ═══ MÚSICA DE FUNDO ═══
+  let bgMusicDuration = 0
+  if (bgMusicUrl && bgMusicVolume > 0) {
     try {
-      audioContext = new AudioContext()
+      onProgress({
+        phase: 'audio',
+        currentPage: 0,
+        totalPages: loadedImages.length,
+        percent: 22,
+        message: 'Carregando música de fundo...',
+      })
 
-      // Buscar música no Pixabay
-      const pixabayRes = await fetch(
-        `/api/manga-render?getMusic=1&mood=ambient`
-      ).catch(() => null)
+      const musicResponse = await fetch(bgMusicUrl)
+      if (musicResponse.ok) {
+        const musicArrayBuffer = await musicResponse.arrayBuffer()
+        const musicBuffer = await audioCtx.decodeAudioData(musicArrayBuffer)
 
-      let musicUrl = ''
-      if (pixabayRes?.ok) {
-        const musicData = await pixabayRes.json()
-        musicUrl = musicData.bgMusicUrl || ''
-      }
+        bgMusicDuration = musicBuffer.duration
 
-      if (musicUrl) {
-        bgMusicElement = new Audio(musicUrl)
-        bgMusicElement.crossOrigin = 'anonymous'
-        bgMusicElement.loop = true
-        bgMusicElement.volume = bgMusicVolume
+        // Criar source de música em loop
+        const musicSource = audioCtx.createBufferSource()
+        musicSource.buffer = musicBuffer
+        musicSource.loop = true
 
-        const bgSource = audioContext.createMediaElementSource(bgMusicElement)
-        const audioDest = audioContext.createMediaStreamDestination()
-        bgSource.connect(audioDest)
-        bgSource.connect(audioContext.destination) // Also play through speakers for preview
-        stream.addTrack(audioDest.stream.getAudioTracks()[0])
+        const musicGain = audioCtx.createGain()
+        musicGain.gain.value = bgMusicVolume
 
-        bgMusicElement.play()
+        musicSource.connect(musicGain)
+        musicGain.connect(masterGain)
+        musicSource.start()
+
+        console.log(`[manga-renderer] ✅ Música de fundo carregada (${musicBuffer.duration.toFixed(1)}s)`)
       }
     } catch (err) {
-      console.warn('[manga-renderer] Falha ao configurar áudio:', err)
+      console.warn('[manga-renderer] Falha ao carregar música:', err)
     }
   }
 
-  // ═══ TTS (Text-to-Speech) ═══
-  let ttsUtterance: SpeechSynthesisUtterance | null = null
-  let ttsVoiceSelected: SpeechSynthesisVoice | null = null
+  // ═══ TTS: Narração via áudio pré-gerado ═══
+  const ttsBuffers: { buffer: AudioBuffer; startTime: number; duration: number }[] = []
 
-  if (enableTTS && isNarrated && 'speechSynthesis' in window) {
-    const voices = window.speechSynthesis.getVoices()
-    // Priorizar vozes em português
-    ttsVoiceSelected = voices.find(v => v.lang.startsWith('pt-BR'))
-      || voices.find(v => v.lang.startsWith('pt'))
-      || voices.find(v => v.lang.startsWith('es'))
-      || voices[0]
+  if (isNarrated && ttsAudioSegments && ttsAudioSegments.length > 0) {
+    onProgress({
+      phase: 'audio',
+      currentPage: 0,
+      totalPages: loadedImages.length,
+      percent: 25,
+      message: 'Decodificando narração...',
+    })
+
+    let currentTime = 0
+    for (const seg of ttsAudioSegments) {
+      try {
+        const audioBuffer = await decodeBase64Audio(audioCtx, seg.base64)
+        ttsBuffers.push({
+          buffer: audioBuffer,
+          startTime: currentTime,
+          duration: seg.duration,
+        })
+        currentTime += seg.duration
+      } catch (err) {
+        console.warn(`[manga-renderer] Falha ao decodificar TTS segmento ${seg.index}:`, err)
+      }
+    }
+
+    console.log(`[manga-renderer] ✅ ${ttsBuffers.length} segmentos TTS decodificados`)
   }
 
-  // ═══ MediaRecorder ═══
+  // ═══ SFX: Pré-gerar efeitos sonoros ═══
+  const sfxBuffers: Map<string, AudioBuffer> = new Map()
+  if (enableSfx && isNarrated) {
+    const sfxTypes = ['punch', 'boom', 'reveal', 'whoosh'] as const
+    for (const type of sfxTypes) {
+      sfxBuffers.set(type, generateSfx(audioCtx, type, 0.4))
+    }
+  }
+
+  // ═══ MONTAR TIMELINE DE ÁUDIO ═══
+  // Calcular quando cada segmento TTS deve tocar (alinhado com as imagens)
+  const segmentTimings: { ttsIdx: number; imageIdx: number; startFrame: number; endFrame: number }[] = []
+  if (isNarrated && ttsBuffers.length > 0) {
+    let frameAccum = 0
+    for (let i = 0; i < segments.length && i < ttsBuffers.length; i++) {
+      const segDuration = segments[i].duration
+      const segFrames = segDuration * fps
+      segmentTimings.push({
+        ttsIdx: i,
+        imageIdx: i,
+        startFrame: frameAccum,
+        endFrame: frameAccum + segFrames,
+      })
+      frameAccum += segFrames
+    }
+  }
+
+  // ═══ MONTAR MediaRecorder ═══
+  const stream = canvas.captureStream(fps)
+  // Adicionar a faixa de áudio do AudioContext ao stream
+  stream.addTrack(audioDestination.stream.getAudioTracks()[0])
+
   const mediaRecorder = new MediaRecorder(stream, {
     mimeType: 'video/webm;codecs=vp9',
     videoBitsPerSecond: 6_000_000,
@@ -519,18 +578,16 @@ export async function renderMangaSlideshow(
   }
 
   return new Promise<Blob>((resolve, reject) => {
+    let ttsStarted = false
+
     mediaRecorder.onstop = () => {
-      bgMusicElement?.pause()
-      audioContext?.close()
-      window.speechSynthesis?.cancel()
+      audioCtx.close()
       const blob = new Blob(chunks, { type: 'video/webm' })
       resolve(blob)
     }
 
     mediaRecorder.onerror = () => {
-      bgMusicElement?.pause()
-      audioContext?.close()
-      window.speechSynthesis?.cancel()
+      audioCtx.close()
       reject(new Error('Erro no MediaRecorder'))
     }
 
@@ -576,10 +633,60 @@ export async function renderMangaSlideshow(
 
       const img = loadedImages[currentSegmentIdx]
       const framesForThisSegment = getFramesForSegment(currentSegmentIdx)
-      const progress = segmentFrameCount / framesForThisSegment // 0-1 within segment
+      const progress = segmentFrameCount / framesForThisSegment
       const emotion = isNarrated ? segments[currentSegmentIdx]?.emotion || 'buildup' : 'buildup'
       const subtitle = isNarrated ? segments[currentSegmentIdx]?.subtitle || '' : ''
-      const dialogue = isNarrated ? '' : (pages[currentSegmentIdx] || pages[currentSegmentIdx * Math.floor(pages.length / loadedImages.length)])?.dialogue || ''
+
+      // ═══ TOSCAR TTS: Iniciar narração sincronizada ═══
+      if (!ttsStarted && isNarrated && ttsBuffers.length > 0) {
+        ttsStarted = true
+        // Tocar cada segmento TTS no momento correto
+        for (const timing of segmentTimings) {
+          if (timing.ttsIdx < ttsBuffers.length) {
+            const ttsBuf = ttsBuffers[timing.ttsIdx]
+            const startTimeSec = timing.startFrame / fps
+
+            const ttsSource = audioCtx.createBufferSource()
+            ttsSource.buffer = ttsBuf.buffer
+
+            // Volume da narração mais alto que a música
+            const ttsGain = audioCtx.createGain()
+            ttsGain.gain.value = 1.0
+
+            ttsSource.connect(ttsGain)
+            ttsGain.connect(masterGain)
+
+            // Agendar início
+            const delay = Math.max(0, startTimeSec - audioCtx.currentTime)
+            ttsSource.start(audioCtx.currentTime + delay)
+          }
+        }
+
+        // ═══ SFX: Tocar efeitos no momento certo ═══
+        if (enableSfx) {
+          for (const timing of segmentTimings) {
+            const seg = segments[timing.ttsIdx]
+            if (seg) {
+              const sfxType = emotionToSfx(seg.emotion)
+              if (sfxType && sfxBuffers.has(sfxType)) {
+                const sfxBuf = sfxBuffers.get(sfxType)!
+                const sfxSource = audioCtx.createBufferSource()
+                sfxSource.buffer = sfxBuf
+
+                const sfxGain = audioCtx.createGain()
+                sfxGain.gain.value = 0.3 // Volume sutil
+
+                sfxSource.connect(sfxGain)
+                sfxGain.connect(masterGain)
+
+                const sfxTime = timing.startFrame / fps
+                const delay = Math.max(0, sfxTime - audioCtx.currentTime)
+                sfxSource.start(audioCtx.currentTime + delay)
+              }
+            }
+          }
+        }
+      }
 
       // Limpar canvas
       ctx.fillStyle = '#0a0a0a'
@@ -599,13 +706,11 @@ export async function renderMangaSlideshow(
       }
 
       // Desenhar página
-      const bounds = drawMangaPage(ctx, img, canvasWidth, canvasHeight)
+      drawMangaPage(ctx, img, canvasWidth, canvasHeight)
 
-      // Desenhar subtítulo narrado OU balão de diálogo
+      // Desenhar subtítulo narrado
       if (isNarrated && subtitle) {
         drawSubtitle(ctx, subtitle, canvasWidth, canvasHeight, emotion)
-      } else if (dialogue) {
-        drawDialogueBubble(ctx, dialogue, canvasWidth, canvasHeight, bounds)
       }
 
       // Overlay de emoção
@@ -626,42 +731,23 @@ export async function renderMangaSlideshow(
         segmentFrameCount = 0
       }
 
-      const percent = 25 + (frameCount / totalFrames) * 70
+      const percent = 30 + (frameCount / totalFrames) * 65
       onProgress({
         phase: 'rendering',
-        currentPage: currentSegmentIdx + 1,
+        currentPage: Math.min(currentSegmentIdx + 1, loadedImages.length),
         totalPages: loadedImages.length,
         percent: Math.min(percent, 95),
         message: isNarrated
-          ? `Narrando segmento ${currentSegmentIdx + 1}/${loadedImages.length}...`
-          : `Renderizando página ${currentSegmentIdx + 1}/${loadedImages.length}...`,
+          ? `Renderizando segmento ${Math.min(currentSegmentIdx + 1, loadedImages.length)}/${loadedImages.length}...`
+          : `Renderizando página ${Math.min(currentSegmentIdx + 1, loadedImages.length)}/${loadedImages.length}...`,
       })
 
       // Próximo frame
       setTimeout(renderFrame, 1000 / fps / 2)
     }
 
-    // Iniciar narração TTS se modo narrado
-    if (enableTTS && isNarrated && ttsVoiceSelected && 'speechSynthesis' in window) {
-      let ttsDelay = 0
-      for (const seg of segments) {
-        const utterance = new SpeechSynthesisUtterance(seg.narration)
-        utterance.voice = ttsVoiceSelected
-        utterance.rate = ttsRate
-        utterance.pitch = 1.0
-        utterance.volume = 1.0
-        utterance.lang = 'pt-BR'
-
-        window.speechSynthesis.speak(utterance)
-      }
-    }
-
     renderFrame()
   })
-}
-
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
 export function downloadVideoBlob(blob: Blob, filename: string) {

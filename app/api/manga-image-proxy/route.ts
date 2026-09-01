@@ -31,8 +31,9 @@ export async function GET(request: NextRequest) {
     'manhwaweb',
     'manhwawebbackend',
     'railway.app',
-    // CDNs comuns de mangá/manhwa
+    // CDNs de imagens de mangá/manhwa
     'img1mw.xyz',
+    'img PictureBox',
     'imagizer.imageshack.com',
     'picsum.photos',
     'cloudfront.net',
@@ -44,6 +45,13 @@ export async function GET(request: NextRequest) {
     'wp.com',
     'blogspot.com',
     'blogger.com',
+    // CDNs genéricos de imagens
+    'imgur.com',
+    'i.imgur.com',
+    'postimages.org',
+    'ibb.co',
+    'thumbs2.imgbox.com',
+    'direct',
     // MangaDex CDN prefix patterns
     'ax.',
     'mg.',
@@ -63,12 +71,22 @@ export async function GET(request: NextRequest) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 15000) // 15s timeout
 
+    // Determinar o Referer correto baseado no domínio da imagem
+    const hostname = parsedUrl.hostname.toLowerCase()
+    let referer = parsedUrl.origin + '/'
+    if (hostname.includes('img1mw') || hostname.includes('manhwaweb')) {
+      referer = 'https://manhwaweb.com/'
+    } else if (hostname.includes('mangadex')) {
+      referer = 'https://mangadex.org/'
+    }
+
     const response = await fetch(imageUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': parsedUrl.origin + '/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': referer,
         'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
       },
     })
     clearTimeout(timeout)

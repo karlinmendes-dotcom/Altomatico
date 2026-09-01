@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input'
 import {
   renderMangaSlideshow, downloadVideoBlob, splitChapterIntoParts,
   YOUTUBE_SHORTS_MAX_SECONDS,
-  type RenderProgress, type MangaPart, type NarratedSegment
+  type RenderProgress, type MangaPart, type NarratedSegment,
+  type RenderConfig
 } from '@/lib/manga-client-renderer'
 
 // ═══════════════════════════════════════════════════════════════
@@ -79,6 +80,8 @@ export default function MangaVideoPage() {
   const [selectedPart, setSelectedPart] = useState(0)
   const [narrateData, setNarrateData] = useState<NarrateData | null>(null)
   const [narrateLoading, setNarrateLoading] = useState(false)
+  const [ttsAudioData, setTtsAudioData] = useState<{ base64: string; duration: number; text: string; index: number }[] | null>(null)
+  const [bgMusicUrl, setBgMusicUrl] = useState<string | null>(null)
 
   // ─── Carregar canais YouTube do localStorage ────────────
   useEffect(() => {
@@ -228,13 +231,60 @@ export default function MangaVideoPage() {
           const parts = splitChapterIntoParts(selectedPages, durationPerPage)
           setChapterParts(parts)
 
-          // ═══ FASE 2: Renderizar vídeo narrado ═══
+          // ═══ FASE 2: Gerar áudio (TTS + música) ═══
+          let ttsAudio: { base64: string; duration: number; text: string; index: number }[] | undefined
+          let musicUrl: string | undefined
+
+          // Gerar TTS server-side
+          if (enableTTS) {
+            setPhase('narrating')
+            addLog('🗣️ Gerando áudio de narração (TTS server-side)...')
+            try {
+              const ttsRes = await fetch('/api/manga-tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  text: segments.map(s => s.narration).join(' '),
+                  lang: 'pt-BR',
+                }),
+              })
+              const ttsData = await ttsRes.json()
+              if (ttsData.success && ttsData.segments?.length > 0) {
+                ttsAudio = ttsData.segments
+                addLog(`✅ TTS pronto: ${ttsData.segments.length} segmentos, ~${ttsData.totalDuration}s`)
+              } else {
+                addLog('⚠️ TTS falhou — vídeo será sem narração de voz')
+              }
+            } catch (err) {
+              addLog(`⚠️ Erro no TTS: ${err instanceof Error ? err.message : 'desconhecido'}`)
+            }
+          }
+
+          // Buscar música de fundo
+          if (enableAudio) {
+            addLog('🎵 Buscando música de fundo no Pixabay...')
+            try {
+              const musicRes = await fetch('/api/manga-audio?mood=ambient&duration=60')
+              const musicData = await musicRes.json()
+              if (musicData.success && musicData.bgMusicUrl) {
+                musicUrl = musicData.bgMusicUrl
+                addLog(`✅ Música encontrada: ${musicData.title || 'lofi ambient'}`)
+              } else {
+                addLog('⚠️ Música não encontrada — vídeo sem trilha sonora')
+              }
+            } catch (err) {
+              addLog(`⚠️ Erro ao buscar música: ${err instanceof Error ? err.message : 'desconhecido'}`)
+            }
+          }
+
+          // ═══ FASE 3: Renderizar vídeo ═══
           setPhase('rendering')
           addLog('🎬 Renderizando vídeo narrado...')
           addLog(`📺 Formato: 1080x1920 (vertical/Shorts)`)
           addLog(`🔄 Transições: slideleft entre páginas`)
-          addLog(`🗣️ Narração: ${enableTTS ? 'Ativada (TTS)' : 'Desativada'}`)
-          addLog(`🎵 Música: ${enableAudio ? `Volume ${bgMusicVolume}%` : 'Desativada'}`)
+          addLog(`🗣️ Narração: ${ttsAudio ? 'Ativada (TTS server-side)' : 'Desativada'}`)
+          addLog(`🎵 Música: ${musicUrl ? 'Carregada' : 'Sem trilha'}`)
+          addLog(`💥 SFX: Ativados (whoosh, boom, reveal)`)
 
           const blob = await renderMangaSlideshow({
             pages: selectedPages,
@@ -244,9 +294,10 @@ export default function MangaVideoPage() {
             canvasHeight: 1920,
             bgMusicVolume: enableAudio ? bgMusicVolume / 100 : 0,
             segments,
-            enableTTS,
-            ttsRate: 1.0,
-          }, (progress: RenderProgress) => {
+            ttsAudioSegments: ttsAudio,
+            bgMusicUrl: musicUrl,
+            enableSfx: true,
+          } satisfies RenderConfig, (progress: RenderProgress) => {
             setRenderProgress(progress)
             if (progress.phase === 'rendering') {
               addLog(`🖌️ ${progress.message}`)
@@ -337,6 +388,20 @@ export default function MangaVideoPage() {
     const currentPart = parts[selectedPart] || parts[0]
     addLog(`📖 Renderizando Parte ${currentPart.partNumber}/${currentPart.totalParts} (${currentPart.pages.length} páginas)`)
 
+    // Buscar música de fundo para modo simples também
+    let musicUrl: string | undefined
+    if (enableAudio) {
+      addLog('🎵 Buscando música de fundo...')
+      try {
+        const musicRes = await fetch('/api/manga-audio?mood=ambient&duration=60')
+        const musicData = await musicRes.json()
+        if (musicData.success && musicData.bgMusicUrl) {
+          musicUrl = musicData.bgMusicUrl
+          addLog(`✅ Música: ${musicData.title || 'lofi ambient'}`)
+        }
+      } catch {}
+    }
+
     const blob = await renderMangaSlideshow({
       pages: currentPart.pages,
       durationPerPage,
@@ -344,7 +409,9 @@ export default function MangaVideoPage() {
       canvasWidth: 1080,
       canvasHeight: 1920,
       bgMusicVolume: enableAudio ? bgMusicVolume / 100 : 0,
-    }, (progress: RenderProgress) => {
+      bgMusicUrl: musicUrl,
+      enableSfx: false,
+    } satisfies RenderConfig, (progress: RenderProgress) => {
       setRenderProgress(progress)
       if (progress.phase === 'rendering') {
         addLog(`🖌️ ${progress.message}`)
