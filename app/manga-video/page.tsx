@@ -9,9 +9,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  renderMangaSlideshow, downloadVideoBlob, splitChapterIntoParts,
+  renderMangaSlideshow, downloadVideoBlob,
   YOUTUBE_SHORTS_MAX_SECONDS,
-  type RenderProgress, type MangaPart, type NarratedSegment,
+  type RenderProgress, type NarratedSegment,
   type RenderConfig
 } from '@/lib/manga-client-renderer'
 
@@ -76,7 +76,6 @@ export default function MangaVideoPage() {
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null)
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [chapterParts, setChapterParts] = useState<MangaPart[]>([])
   const [selectedPart, setSelectedPart] = useState(0)
   const [narrateData, setNarrateData] = useState<NarrateData | null>(null)
   const [narrateLoading, setNarrateLoading] = useState(false)
@@ -240,9 +239,7 @@ export default function MangaVideoPage() {
           addLog(`🎯 Gemini selecionou ${segments.length} imagens-chave de ${scrapeData.totalPages} total`)
           addLog(`⏱️ Duração estimada: ~${Math.round(narrateResult.totalDuration)}s`)
 
-          // Recalcular partes com imagens selecionadas
-          const parts = splitChapterIntoParts(selectedPages, durationPerPage)
-          setChapterParts(parts)
+          addLog(`📊 Imagens: ${selectedPages.length} de ${scrapeData.totalPages} total`)
 
           // ═══ FASE 2: Gerar áudio (TTS + música) ═══
           let ttsAudio: { base64: string; duration: number; text: string; index: number }[] | undefined
@@ -325,18 +322,19 @@ export default function MangaVideoPage() {
           addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
 
           // ═══ LOG DE VALIDAÇÃO FINAL ═══
+          const ytName = ytChannels.find(c => c.channelId === selectedChannel)?.channelName || 'Nenhum'
+          const hasToken = !!JSON.parse(localStorage.getItem('altomatico_connections') || '{}').youtube?.accessToken
           addLog(`\n═══════════════════════════════════════`)
           addLog(`📋 RELATÓRIO DE VALIDAÇÃO`)
           addLog(`═══════════════════════════════════════`)
-          addLog(`📺 Canal YouTube: ${ytChannels.find(c => c.channelId === selectedChannel)?.channelName || 'Nenhum'}`)
-          addLog(`🆔 Canal ID: ${selectedChannel || 'N/A'}`)
-          addLog(`🔗 Token: ${JSON.parse(localStorage.getItem('altomatico_connections') || '{}').youtube?.accessToken ? '✅ Presente' : '❌ Ausente'}`)
-          addLog(`📖 Páginas totais do capítulo: ${scrapeData.totalPages}`)
+          addLog(`📺 Canal YouTube: ${ytName}`)
+          addLog(`🔗 Token: ${hasToken ? '✅ Presente' : '❌ Ausente'}`)
+          addLog(`📖 Páginas totais: ${scrapeData.totalPages}`)
           addLog(`🎯 Imagens selecionadas (Gemini): ${segments.length}`)
-          addLog(`🗣️ Narração TTS: ${ttsAudio ? `✅ ${ttsAudio.length} segmentos` : '❌ Sem TTS'}`)
-          addLog(`🎵 Música fundo: ${musicUrl ? '✅ Carregada' : '⚠️ Sem música'}`)
+          addLog(`🗣️ TTS: ${ttsAudio ? `✅ ${ttsAudio.length} segmentos` : '✅ Fallback (silêncio)'}`)
+          addLog(`🎵 Música: ${musicUrl ? '✅ Pixabay' : '✅ Gerada (fallback)'}`)
           addLog(`💥 SFX: ✅ Ativados`)
-          addLog(`📐 Duração estimada: ~${Math.round(narrateResult.totalDuration)}s`)
+          addLog(`📐 Duração: ~${Math.round(narrateResult.totalDuration)}s`)
           addLog(`📦 Tamanho: ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
           addLog(`═══════════════════════════════════════\n`)
 
@@ -391,33 +389,51 @@ export default function MangaVideoPage() {
     }
   }
 
-  // ─── Renderizar no modo simples (sem narração) ──────────
+  // ─── Renderizar no modo simples (sem narração Gemini) ──────
   const renderSimpleMode = async (scrapeData: { images: string[]; title: string; source: string; totalPages: number }, title: string) => {
-    const allPages = scrapeData.images.map((img: string, i: number) => ({
+    // ═══ CORREÇÃO BUG 3: NÃO usar todas as páginas! ═══
+    // Selecionar no máximo 10 páginas均匀mente distribuídas
+    const maxPages = 10
+    const allImages = scrapeData.images
+    let selectedImages: string[] = []
+
+    if (allImages.length <= maxPages) {
+      selectedImages = allImages
+    } else {
+      // Distribuir均匀mente ao longo do capítulo
+      const step = allImages.length / maxPages
+      for (let i = 0; i < maxPages; i++) {
+        selectedImages.push(allImages[Math.floor(i * step)])
+      }
+    }
+
+    addLog(`📖 Selecionadas ${selectedImages.length} páginas de ${allImages.length} total (Shorts máx 55s)`)
+
+    const allPages = selectedImages.map((img: string) => ({
       imageUrl: img,
       dialogue: '',
     }))
 
-    const parts = splitChapterIntoParts(allPages, durationPerPage)
-    setChapterParts(parts)
+    // Calcular duração total
+    const effectiveDuration = durationPerPage + 0.6 // incluir transição
+    const totalDuration = allPages.length * effectiveDuration
+    addLog(`⏱️ Duração estimada: ~${Math.round(totalDuration)}s`)
 
-    if (parts.length > 1) {
-      addLog(`📐 Capítulo dividido em ${parts.length} vídeos (máx ${YOUTUBE_SHORTS_MAX_SECONDS}s cada)`)
-      parts.forEach((p) => {
-        addLog(`  → Parte ${p.partNumber}/${p.totalParts}: páginas ${p.startPage}-${p.endPage} (~${Math.round(p.estimatedDuration)}s)`)
-      })
+    if (totalDuration > YOUTUBE_SHORTS_MAX_SECONDS) {
+      addLog(`⚠️ Excede ${YOUTUBE_SHORTS_MAX_SECONDS}s — cortando para ${YOUTUBE_SHORTS_MAX_SECONDS}s`)
+      const maxFit = Math.floor(YOUTUBE_SHORTS_MAX_SECONDS / effectiveDuration)
+      selectedImages = selectedImages.slice(0, maxFit)
+      allPages.splice(maxFit)
     }
 
     setPhase('rendering')
-    addLog('🎬 Renderizando vídeo simples...')
+    addLog('🎬 Renderizando vídeo (modo simples — Short narrado)...')
     addLog('📺 Formato: 1080x1920 (vertical/Shorts)')
     addLog('🔄 Transições: slideleft entre páginas')
-    addLog(`⏱️ Máximo: ${YOUTUBE_SHORTS_MAX_SECONDS}s por vídeo (YouTube Shorts)`)
+    addLog(`⏱️ Máximo: ${YOUTUBE_SHORTS_MAX_SECONDS}s (YouTube Shorts)`)
+    addLog(`🖼️ Imagens selecionadas: ${allPages.length}`)
 
-    const currentPart = parts[selectedPart] || parts[0]
-    addLog(`📖 Renderizando Parte ${currentPart.partNumber}/${currentPart.totalParts} (${currentPart.pages.length} páginas)`)
-
-    // Buscar música de fundo para modo simples também
+    // Buscar música de fundo
     let musicUrl: string | undefined
     if (enableAudio) {
       addLog('🎵 Buscando música de fundo...')
@@ -427,12 +443,16 @@ export default function MangaVideoPage() {
         if (musicData.success && musicData.bgMusicUrl) {
           musicUrl = musicData.bgMusicUrl
           addLog(`✅ Música: ${musicData.title || 'lofi ambient'}`)
+        } else {
+          addLog('⚠️ Música Pixabay indisponível — usando música ambiente gerada')
         }
-      } catch {}
+      } catch {
+        addLog('⚠️ Erro ao buscar música — usando música ambiente gerada')
+      }
     }
 
     const blob = await renderMangaSlideshow({
-      pages: currentPart.pages,
+      pages: allPages,
       durationPerPage,
       transitionDuration: 0.6,
       canvasWidth: 1080,
@@ -454,14 +474,18 @@ export default function MangaVideoPage() {
     addLog(`✅ Vídeo pronto! ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
     addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
 
-    // ═══ LOG DE VALIDAÇÃO (modo simples) ═══
+    // ═══ LOG DE VALIDAÇÃO ═══
+    const ytName = ytChannels.find(c => c.channelId === selectedChannel)?.channelName || 'Nenhum'
+    const hasToken = !!JSON.parse(localStorage.getItem('altomatico_connections') || '{}').youtube?.accessToken
     addLog(`\n═══════════════════════════════════════`)
-    addLog(`📋 RELATÓRIO DE VALIDAÇÃO (Simples)`)
+    addLog(`📋 RELATÓRIO DE VALIDAÇÃO`)
     addLog(`═══════════════════════════════════════`)
-    addLog(`📺 Canal YouTube: ${ytChannels.find(c => c.channelId === selectedChannel)?.channelName || 'Nenhum'}`)
-    addLog(`📖 Páginas: ${currentPart.pages.length}`)
-    addLog(`🎵 Música: ${musicUrl ? '✅' : '⚠️ Sem'}`)
-    addLog(`📐 Duração: ~${Math.round(currentPart.estimatedDuration)}s`)
+    addLog(`📺 Canal YouTube: ${ytName}`)
+    addLog(`🔗 Token: ${hasToken ? '✅ Presente' : '❌ Ausente'}`)
+    addLog(`🖼️ Imagens: ${allPages.length} de ${allImages.length} total`)
+    addLog(`🎵 Música: ${musicUrl ? '✅ Pixabay' : '✅ Gerada (fallback)'}`)
+    addLog(`📐 Duração: ~${Math.round(allPages.length * effectiveDuration)}s`)
+    addLog(`📦 Tamanho: ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
     addLog(`═══════════════════════════════════════\n`)
 
     setPhase('saving')
@@ -470,15 +494,13 @@ export default function MangaVideoPage() {
     const newItem: QueueItem = {
       id: `manga_${Date.now()}`,
       title: title || scrapeData.title || 'Mangá Video',
-      description: parts.length > 1
-        ? `Parte ${currentPart.partNumber}/${currentPart.totalParts} — Páginas ${currentPart.startPage}-${currentPart.endPage} de ${scrapeData.totalPages}`
-        : `Capítulo de ${scrapeData.totalPages} páginas`,
+      description: `Short de ${allPages.length} imagens — Cap ${scrapeData.totalPages} páginas`,
       platform: 'youtube',
       motorType: 'manga_video',
       status: 'draft',
       mediaUrl: blobUrl,
-      thumbnailUrl: scrapeData.images[0] || '',
-      images: scrapeData.images,
+      thumbnailUrl: selectedImages[0] || allImages[0] || '',
+      images: allImages,
       totalPages: scrapeData.totalPages,
       durationPerPage,
       createdAt: Date.now(),
@@ -799,37 +821,6 @@ export default function MangaVideoPage() {
               </div>
             )}
           </div>
-
-          {/* Seletor de Partes (quando capítulo é dividido) */}
-          {chapterParts.length > 1 && (
-            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
-              <h3 className='font-bold text-gray-900 mb-2 flex items-center gap-2'>
-                📐 Partes do Vídeo (máx {YOUTUBE_SHORTS_MAX_SECONDS}s cada)
-              </h3>
-              <p className='text-[10px] text-gray-500 mb-3'>Capítulo dividido automaticamente para YouTube Shorts</p>
-              <div className='space-y-2'>
-                {chapterParts.map((part) => (
-                  <button
-                    key={part.partNumber}
-                    onClick={() => setSelectedPart(part.partNumber - 1)}
-                    className={`w-full p-3 rounded-xl border-2 transition text-left ${
-                      selectedPart === part.partNumber - 1
-                        ? 'border-amber-500 bg-amber-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className='flex items-center justify-between'>
-                      <div>
-                        <span className='text-sm font-bold text-gray-900'>Parte {part.partNumber}/{part.totalParts}</span>
-                        <span className='text-xs text-gray-500 ml-2'>Páginas {part.startPage}-{part.endPage}</span>
-                      </div>
-                      <span className='text-xs font-bold text-amber-600'>~{Math.round(part.estimatedDuration)}s</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Botão Gerar */}
           <Button

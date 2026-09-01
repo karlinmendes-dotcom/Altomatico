@@ -213,41 +213,38 @@ function drawMangaPage(
   width: number,
   height: number
 ): { drawX: number; drawY: number; drawW: number; drawH: number } {
-  // 1. Fundo desfocado
+  // 1. Fundo escuro (limpo)
+  ctx.fillStyle = '#0a0a0a'
+  ctx.fillRect(0, 0, width, height)
+
+  // 2. Fundo desfocado preenchendo todo o canvas
   ctx.save()
-  ctx.filter = 'blur(20px) brightness(0.3)'
-  const bgScale = Math.max(width / img.width, height / img.height) * 1.2
+  ctx.filter = 'blur(30px) brightness(0.4)'
+  const bgScale = Math.max(width / img.width, height / img.height) * 1.3
   const bgW = img.width * bgScale
   const bgH = img.height * bgScale
   ctx.drawImage(img, (width - bgW) / 2, (height - bgH) / 2, bgW, bgH)
   ctx.restore()
 
-  // 2. Imagem principal centralizada
+  // 3. Imagem principal — PREENCHE o canvas (cover mode)
+  //    Usa Math.max para garantir que a imagem cobre todo o canvas 1080x1920
+  //    A imagem pode ter partes cortadas nas laterais (correto para mangá vertical)
   ctx.save()
-  const scale = Math.min(width / img.width, height / img.height) * 0.88
+  const scale = Math.max(width / img.width, height / img.height)
   const drawW = img.width * scale
   const drawH = img.height * scale
   const drawX = (width - drawW) / 2
   const drawY = (height - drawH) / 2
 
-  ctx.shadowColor = 'rgba(0,0,0,0.5)'
-  ctx.shadowBlur = 20
-  ctx.shadowOffsetY = 5
-
-  const radius = 12
-  ctx.beginPath()
-  ctx.roundRect(drawX, drawY, drawW, drawH, radius)
-  ctx.clip()
+  // Desenhar imagem preenchendo o canvas inteiro
   ctx.drawImage(img, drawX, drawY, drawW, drawH)
   ctx.restore()
 
-  // 3. Borda branca estilo revistinha
+  // 4. Borda sutil estilo revistinha (apenas nas laterais)
   ctx.save()
-  ctx.strokeStyle = 'rgba(255,255,255,0.8)'
-  ctx.lineWidth = 3
-  ctx.beginPath()
-  ctx.roundRect(drawX - 1, drawY - 1, drawW + 2, drawH + 2, radius)
-  ctx.stroke()
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'
+  ctx.lineWidth = 4
+  ctx.strokeRect(0, 0, width, height)
   ctx.restore()
 
   return { drawX, drawY, drawW, drawH }
@@ -503,6 +500,60 @@ export async function renderMangaSlideshow(
     } catch (err) {
       console.warn('[manga-renderer] Falha ao carregar música:', err)
     }
+  }
+
+  // ═══ FALLBACK: Gerar música ambiente via Web Audio API ═══
+  // Se não há música do Pixabay, gera um loop suave de tons ambiente
+  // para garantir que o vídeo SEMPRE tenha áudio (YouTube não rejeita)
+  if (bgMusicVolume > 0 && bgMusicDuration === 0) {
+    onProgress({
+      phase: 'audio',
+      currentPage: 0,
+      totalPages: loadedImages.length,
+      percent: 23,
+      message: 'Gerando música ambiente (fallback)...',
+    })
+
+    const totalDuration = isNarrated
+      ? segments.reduce((s, seg) => s + seg.duration, 0)
+      : loadedImages.length * durationPerPage
+    const sampleRate = audioCtx.sampleRate
+    const ambientLength = Math.ceil(sampleRate * Math.max(totalDuration + 2, 60))
+    const ambientBuffer = audioCtx.createBuffer(2, ambientLength, sampleRate)
+
+    // Gerar loop suave de acordes ambiente
+    const chordFreqs = [261.63, 329.63, 392.0, 523.25] // C4, E4, G4, C5
+    for (let ch = 0; ch < 2; ch++) {
+      const data = ambientBuffer.getChannelData(ch)
+      for (let i = 0; i < ambientLength; i++) {
+        const t = i / sampleRate
+        let sample = 0
+        for (let f = 0; f < chordFreqs.length; f++) {
+          const freq = chordFreqs[f] * (ch === 0 ? 1 : 1.002) // slight detune for richness
+          sample += Math.sin(2 * Math.PI * freq * t) * 0.08
+        }
+        // Slow amplitude modulation for movement
+        sample *= 0.5 + 0.5 * Math.sin(2 * Math.PI * 0.15 * t)
+        // Soft fade in/out
+        const fadeIn = Math.min(1, t / 2)
+        const fadeOut = Math.min(1, (ambientLength / sampleRate - t) / 2)
+        sample *= fadeIn * fadeOut
+        data[i] = sample * 0.3
+      }
+    }
+
+    const ambientSource = audioCtx.createBufferSource()
+    ambientSource.buffer = ambientBuffer
+    ambientSource.loop = true
+
+    const ambientGain = audioCtx.createGain()
+    ambientGain.gain.value = bgMusicVolume * 0.8 // slightly quieter than Pixabay music
+
+    ambientSource.connect(ambientGain)
+    ambientGain.connect(masterGain)
+    ambientSource.start()
+
+    console.log(`[manga-renderer] ✅ Música ambiente gerada (${totalDuration.toFixed(1)}s)`)  
   }
 
   // ═══ TTS: Narração via áudio pré-gerado ═══
