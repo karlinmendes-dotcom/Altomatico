@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // ═══════════════════════════════════════════════════════════════
 // Manga Audio — Busca música de fundo no Pixabay
 // Retorna URL de áudio para uso no renderer client-side
+// Se falhar, retorna fallback (sem URL — renderer gera silêncio)
 // ═══════════════════════════════════════════════════════════════
 
 export async function GET(request: NextRequest) {
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
     const pixabayKey = process.env.PIXABAY_API_KEY
 
     if (!pixabayKey) {
+      console.warn('[manga-audio] PIXABAY_API_KEY não configurada')
       return NextResponse.json({
         success: false,
         error: 'PIXABAY_API_KEY não configurada',
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Buscar músicas no Pixabay (endpoint de MÚSICAS, não vídeos)
+    // Buscar músicas no Pixabay (endpoint de MÚSICAS)
     const query = mood === 'ambient'
       ? 'lofi ambient cinematic'
       : mood === 'epic'
@@ -32,11 +34,20 @@ export async function GET(request: NextRequest) {
 
     const pixabayUrl = `https://pixabay.com/api/?key=${pixabayKey}&type=music&q=${encodeURIComponent(query)}&per_page=5&min_duration=20&max_duration=120&order=popular`
 
-    console.log(`[manga-audio] Buscando música: "${query}" no Pixabay`)
+    console.log(`[manga-audio] Buscando música: "${query}"`)
 
-    const res = await fetch(pixabayUrl)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000) // 10s timeout
+
+    let res: Response
+    try {
+      res = await fetch(pixabayUrl, { signal: controller.signal })
+    } finally {
+      clearTimeout(timeout)
+    }
+
     if (!res.ok) {
-      console.error(`[manga-audio] Pixabay retornou HTTP ${res.status}`)
+      console.warn(`[manga-audio] Pixabay retornou HTTP ${res.status}`)
       return NextResponse.json({
         success: false,
         error: `Pixabay HTTP ${res.status}`,
@@ -47,7 +58,7 @@ export async function GET(request: NextRequest) {
     const data = await res.json()
 
     if (!data.hits || data.hits.length === 0) {
-      console.log('[manga-audio] Nenhuma música encontrada no Pixabay')
+      console.warn('[manga-audio] Nenhuma música encontrada')
       return NextResponse.json({
         success: false,
         error: 'Nenhuma música encontrada',
@@ -59,7 +70,16 @@ export async function GET(request: NextRequest) {
     const hit = data.hits[0]
     const audioUrl = hit.audio || hit.audio_128 || hit.audio_64 || ''
 
-    console.log(`[manga-audio] ✅ Música encontrada: "${hit.tags}" (${hit.duration}s)`)
+    if (!audioUrl) {
+      console.warn('[manga-audio] Música encontrada mas sem URL de áudio')
+      return NextResponse.json({
+        success: false,
+        error: 'Música sem URL de áudio',
+        bgMusicUrl: '',
+      })
+    }
+
+    console.log(`[manga-audio] ✅ Música: "${hit.tags}" (${hit.duration}s)`)
 
     return NextResponse.json({
       success: true,
@@ -69,7 +89,7 @@ export async function GET(request: NextRequest) {
       user: hit.user || '',
     })
   } catch (error) {
-    console.error('[manga-audio] Erro:', error)
+    console.warn('[manga-audio] Erro:', error)
     return NextResponse.json({
       success: false,
       bgMusicUrl: '',

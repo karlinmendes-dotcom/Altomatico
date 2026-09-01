@@ -81,7 +81,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`[manga-narrate] Iniciando narrativa para ${images.length} páginas de "${mangaTitle}"`)
+    console.log(`[manga-narrate] ════════════════════════════════════════`)
+    console.log(`[manga-narrate] INICIANDO NARRATIVA`) 
+    console.log(`[manga-narrate] Título: "${mangaTitle}"`)
+    console.log(`[manga-narrate] Páginas disponíveis: ${images.length}`)
+    console.log(`[manga-narrate] Duração máxima: ${maxDuration}s`)
+    console.log(`[manga-narrate] Target segmentos: ${targetSegments}`)
+    console.log(`[manga-narrate] ════════════════════════════════════════`)
 
     // Buscar chave Gemini dedicada ao módulo manga
     const geminiKey =
@@ -90,11 +96,13 @@ export async function POST(request: NextRequest) {
       process.env.GEMINI_API_KEY
 
     if (!geminiKey) {
+      console.error('[manga-narrate] ❌ Nenhuma chave Gemini configurada!')
       return NextResponse.json(
         { success: false, error: 'Chave Gemini não configurada. Adicione GEMINI_MANGA_API_KEY no Settings → Environment.' },
         { status: 500 }
       )
     }
+    console.log(`[manga-narrate] ✅ Chave Gemini configurada (${geminiKey.substring(0, 8)}...)`)
 
     // ═══ GERAR ROTEIRO COM GEMINI ═══
     // Envia os índices das imagens disponíveis para a IA selecionar as melhores
@@ -266,9 +274,15 @@ Responda EXATAMENTE neste formato JSON (sem markdown, sem crases):
       mangaTitle: parsed.title || mangaTitle,
     }
 
-    console.log(`[manga-narrate] ✅ Roteiro pronto: ${segments.length} segmentos, ${result.totalDuration}s total`)
+    console.log(`[manga-narrate] ════════════════════════════════════════`)
+    console.log(`[manga-narrate] ✅ ROTEIRO PRONTO`)
+    console.log(`[manga-narrate] Segmentos: ${segments.length}`)
+    console.log(`[manga-narrate] Duração total: ${result.totalDuration}s (máx: ${maxDuration}s)`)
+    console.log(`[manga-narrate] Imagens selecionadas: [${result.selectedImageIndices.join(', ')}]`)
     console.log(`[manga-narrate] Título: ${result.title}`)
-    console.log(`[manga-narrate] Imagens: [${result.selectedImageIndices.join(', ')}]`)
+    console.log(`[manga-narrate] Palavras no roteiro: ~${result.fullNarration.split(' ').length}`)
+    console.log(`[manga-narrate] Hashtags: ${result.hashtags.length}`)
+    console.log(`[manga-narrate] ════════════════════════════════════════`)
 
     return NextResponse.json(result)
   } catch (error) {

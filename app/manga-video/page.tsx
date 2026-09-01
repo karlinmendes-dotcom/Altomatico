@@ -111,12 +111,23 @@ export default function MangaVideoPage() {
       }
       setYtChannels(channels)
       if (channels.length > 0) setSelectedChannel(channels[0].channelId)
+      // Log de auditoria YouTube
+      console.log('[manga-video] ═══ AUDITORIA YOUTUBE ═══')
+      console.log(`[manga-video] Canais encontrados: ${channels.length}`)
+      channels.forEach((ch, i) => {
+        console.log(`[manga-video] Canal ${i + 1}: ${ch.channelName} (ID: ${ch.channelId})`)
+      })
+      if (channels.length === 0) {
+        console.warn('[manga-video] ⚠️ NENHUM canal YouTube conectado!')
+      }
+      console.log('[manga-video] ════════════════════════════')
     } catch {}
   }, [])
 
   // ─── Adicionar log ──────────────────────────────────────
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
+    console.log(`[manga-video] ${msg}`)
   }
 
   // ═══ NARRATED MODE: Chamar /api/manga-narrate ═══════════
@@ -313,6 +324,22 @@ export default function MangaVideoPage() {
           addLog(`✅ Vídeo pronto! ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
           addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
 
+          // ═══ LOG DE VALIDAÇÃO FINAL ═══
+          addLog(`\n═══════════════════════════════════════`)
+          addLog(`📋 RELATÓRIO DE VALIDAÇÃO`)
+          addLog(`═══════════════════════════════════════`)
+          addLog(`📺 Canal YouTube: ${ytChannels.find(c => c.channelId === selectedChannel)?.channelName || 'Nenhum'}`)
+          addLog(`🆔 Canal ID: ${selectedChannel || 'N/A'}`)
+          addLog(`🔗 Token: ${JSON.parse(localStorage.getItem('altomatico_connections') || '{}').youtube?.accessToken ? '✅ Presente' : '❌ Ausente'}`)
+          addLog(`📖 Páginas totais do capítulo: ${scrapeData.totalPages}`)
+          addLog(`🎯 Imagens selecionadas (Gemini): ${segments.length}`)
+          addLog(`🗣️ Narração TTS: ${ttsAudio ? `✅ ${ttsAudio.length} segmentos` : '❌ Sem TTS'}`)
+          addLog(`🎵 Música fundo: ${musicUrl ? '✅ Carregada' : '⚠️ Sem música'}`)
+          addLog(`💥 SFX: ✅ Ativados`)
+          addLog(`📐 Duração estimada: ~${Math.round(narrateResult.totalDuration)}s`)
+          addLog(`📦 Tamanho: ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
+          addLog(`═══════════════════════════════════════\n`)
+
           // ═══ FASE 3: Salvar na fila ═══
           setPhase('saving')
           addLog('💾 Salvando na fila de conteúdo...')
@@ -426,6 +453,16 @@ export default function MangaVideoPage() {
 
     addLog(`✅ Vídeo pronto! ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
     addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
+
+    // ═══ LOG DE VALIDAÇÃO (modo simples) ═══
+    addLog(`\n═══════════════════════════════════════`)
+    addLog(`📋 RELATÓRIO DE VALIDAÇÃO (Simples)`)
+    addLog(`═══════════════════════════════════════`)
+    addLog(`📺 Canal YouTube: ${ytChannels.find(c => c.channelId === selectedChannel)?.channelName || 'Nenhum'}`)
+    addLog(`📖 Páginas: ${currentPart.pages.length}`)
+    addLog(`🎵 Música: ${musicUrl ? '✅' : '⚠️ Sem'}`)
+    addLog(`📐 Duração: ~${Math.round(currentPart.estimatedDuration)}s`)
+    addLog(`═══════════════════════════════════════\n`)
 
     setPhase('saving')
     addLog('💾 Salvando na fila de conteúdo...')
