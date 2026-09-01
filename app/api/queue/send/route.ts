@@ -62,15 +62,30 @@ export async function POST(req: NextRequest) {
 
     // ─── YouTube ─────────────────────────────────────────────
     if (platform === "youtube") {
+      // Verificar se há vídeo para upload
+      if (videoUrl) {
+        // Retornar instruções para o frontend fazer o upload via /api/youtube/upload
+        return NextResponse.json({
+          success: true,
+          platform: "youtube",
+          requiresClientUpload: true,
+          uploadEndpoint: "/api/youtube/upload",
+          metadata: {
+            title: title.slice(0, 100),
+            description: fullCaption.slice(0, 5000),
+            tags: (hashtags || []).slice(0, 30),
+            privacyStatus: "private",
+          },
+          message: "Vídeo pronto para upload. O frontend enviará para o YouTube via OAuth.",
+          note: "O vídeo será enviado como PRIVADO. Revise no YouTube antes de publicar.",
+        });
+      }
+
       return NextResponse.json({
         success: true,
         platform: "youtube",
-        message: "Pronto para upload no YouTube como PRIVADO.",
-        note: "O vídeo deve ser enviado como PRIVATE/UNLISTED. Revise antes de tornar público.",
-        metadata: {
-          snippet: { title: title.slice(0, 100), description: fullCaption, tags: hashtags || [] },
-          status: { privacyStatus: "private" },
-        },
+        message: "Rascunho salvo. Adicione um vídeo para poder enviar ao YouTube.",
+        note: "Gere o vídeo primeiro na página Mangá → Vídeo, depois envie da fila.",
       });
     }
 

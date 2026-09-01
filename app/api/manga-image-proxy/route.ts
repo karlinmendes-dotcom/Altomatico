@@ -21,27 +21,57 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
   }
 
-  // Whitelist de domínios permitidos
+  // Whitelist de domínios permitidos (MangaDex + ManhwaWeb + CDNs genéricos)
   const allowedDomains = [
+    // MangaDex CDNs
     'mangadex.network',
     'mangadex.org',
+    'uploads.mangadex.org',
+    // ManhwaWeb / manhwaweb
+    'manhwaweb',
+    'manhwawebbackend',
+    'railway.app',
+    // CDNs comuns de mangá/manhwa
     'img1mw.xyz',
     'imagizer.imageshack.com',
     'picsum.photos',
+    'cloudfront.net',
+    'imgbox.com',
+    'flickr.com',
+    'staticflickr.com',
+    'cdn.discordapp.com',
+    'wordpress.com',
+    'wp.com',
+    'blogspot.com',
+    'blogger.com',
+    // MangaDex CDN prefix patterns
+    'ax.',
+    'mg.',
   ]
 
-  const isAllowed = allowedDomains.some(domain => parsedUrl.hostname.includes(domain))
+  const isAllowed = allowedDomains.some(domain => parsedUrl.hostname.includes(domain)) ||
+    parsedUrl.hostname.endsWith('.mangadex.network') ||
+    parsedUrl.hostname.endsWith('.mangadex.org') ||
+    parsedUrl.hostname.endsWith('.mangadex.com') ||
+    parsedUrl.hostname.endsWith('.railway.app')
   if (!isAllowed) {
-    return NextResponse.json({ error: 'Domain not allowed' }, { status: 403 })
+    console.error(`[manga-proxy] Domain blocked: ${parsedUrl.hostname}`)
+    return NextResponse.json({ error: `Domain not allowed: ${parsedUrl.hostname}` }, { status: 403 })
   }
 
   try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
     const response = await fetch(imageUrl, {
+      signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': parsedUrl.origin + '/',
+        'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       },
     })
+    clearTimeout(timeout)
 
     if (!response.ok) {
       return NextResponse.json({ error: `Failed to fetch: ${response.status}` }, { status: 502 })

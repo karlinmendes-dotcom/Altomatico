@@ -3,11 +3,16 @@ import React, { useState, useEffect, useRef } from 'react'
 import {
   BookOpen, Link2, Clock, Youtube, Music, Wand2, Loader2,
   CheckCircle, AlertCircle, Play, Image, Settings, ArrowLeft,
-  Volume2, VolumeX, ChevronRight, RefreshCw, Download, Eye
+  Volume2, VolumeX, ChevronRight, RefreshCw, Download, Eye,
+  Mic, Sparkles, FileText
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { renderMangaSlideshow, downloadVideoBlob, type RenderProgress } from '@/lib/manga-client-renderer'
+import {
+  renderMangaSlideshow, downloadVideoBlob, splitChapterIntoParts,
+  YOUTUBE_SHORTS_MAX_SECONDS,
+  type RenderProgress, type MangaPart, type NarratedSegment
+} from '@/lib/manga-client-renderer'
 
 // ═══════════════════════════════════════════════════════════════
 // MangaUrlVideo — Página dedicada: Mangá/Manhwa → Vídeo
@@ -35,6 +40,16 @@ interface YouTubeChannel {
   thumbnail?: string
 }
 
+interface NarrateData {
+  title: string
+  caption: string
+  hashtags: string[]
+  fullNarration: string
+  segments: NarratedSegment[]
+  totalDuration: number
+  selectedImageIndices: number[]
+}
+
 export default function MangaVideoPage() {
   // ─── Estado do formulário ───────────────────────────────
   const [mangaUrl, setMangaUrl] = useState('')
@@ -42,6 +57,8 @@ export default function MangaVideoPage() {
   const [durationPerPage, setDurationPerPage] = useState(3)
   const [enableAudio, setEnableAudio] = useState(true)
   const [bgMusicVolume, setBgMusicVolume] = useState(15)
+  const [narrationMode, setNarrationMode] = useState<'simple' | 'narrated'>('narrated')
+  const [enableTTS, setEnableTTS] = useState(true)
 
   // ─── Estado do YouTube ──────────────────────────────────
   const [ytChannels, setYtChannels] = useState<YouTubeChannel[]>([])
@@ -49,7 +66,7 @@ export default function MangaVideoPage() {
 
   // ─── Estado do pipeline ─────────────────────────────────
   const [loading, setLoading] = useState(false)
-  const [phase, setPhase] = useState<'idle' | 'scraping' | 'rendering' | 'saving' | 'done' | 'error'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'scraping' | 'narrating' | 'rendering' | 'saving' | 'done' | 'error'>('idle')
   const [logs, setLogs] = useState<string[]>([])
   const [result, setResult] = useState<QueueItem | null>(null)
   const [scrapedImages, setScrapedImages] = useState<string[]>([])
@@ -58,13 +75,16 @@ export default function MangaVideoPage() {
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null)
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [chapterParts, setChapterParts] = useState<MangaPart[]>([])
+  const [selectedPart, setSelectedPart] = useState(0)
+  const [narrateData, setNarrateData] = useState<NarrateData | null>(null)
+  const [narrateLoading, setNarrateLoading] = useState(false)
 
   // ─── Carregar canais YouTube do localStorage ────────────
   useEffect(() => {
     try {
       const connections = JSON.parse(localStorage.getItem('altomatico_connections') || '{}')
       const channels: YouTubeChannel[] = []
-      // Suportar múltiplos canais YouTube
       if (connections.youtube) {
         if (Array.isArray(connections.youtube)) {
           channels.push(...connections.youtube)
@@ -75,7 +95,6 @@ export default function MangaVideoPage() {
           })
         }
       }
-      // Buscar canais adicionais salvos separadamente
       for (let i = 1; i <= 10; i++) {
         const extra = connections[`youtube_${i}`]
         if (extra) {
@@ -95,6 +114,54 @@ export default function MangaVideoPage() {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
   }
 
+  // ═══ NARRATED MODE: Chamar /api/manga-narrate ═══════════
+  const handleNarrate = async (images: string[], title: string) => {
+    setNarrateLoading(true)
+    addLog('🤖 Chamando Gemini para gerar roteiro narrado...')
+
+    try {
+      const res = await fetch('/api/manga-narrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images,
+          mangaTitle: title,
+          sourceUrl: mangaUrl,
+          maxDuration: 55,
+          targetSegments: 10,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Falha ao gerar roteiro')
+      }
+
+      const narrateResult: NarrateData = {
+        title: data.title || title,
+        caption: data.caption || '',
+        hashtags: data.hashtags || [],
+        fullNarration: data.fullNarration || '',
+        segments: data.segments || [],
+        totalDuration: data.totalDuration || 0,
+        selectedImageIndices: data.selectedImageIndices || [],
+      }
+
+      setNarrateData(narrateResult)
+      addLog(`✅ Roteiro pronto: ${narrateResult.segments.length} segmentos, ~${Math.round(narrateResult.totalDuration)}s`)
+      addLog(`📝 Título: ${narrateResult.title}`)
+
+      return narrateResult
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Erro ao gerar roteiro'
+      addLog(`⚠️ Gemini falhou: ${errMsg} — usando modo simples`)
+      return null
+    } finally {
+      setNarrateLoading(false)
+    }
+  }
+
   // ─── Pipeline principal ─────────────────────────────────
   const handleGenerate = async () => {
     if (!mangaUrl.trim()) {
@@ -107,6 +174,7 @@ export default function MangaVideoPage() {
     setResult(null)
     setScrapedImages([])
     setLogs([])
+    setNarrateData(null)
     setPhase('scraping')
     addLog('📖 Iniciando scraping do capítulo...')
 
@@ -131,65 +199,108 @@ export default function MangaVideoPage() {
         throw new Error('Nenhuma imagem encontrada no site')
       }
 
-      // ═══ FASE 2: Renderizar vídeo no navegador (Canvas + MediaRecorder) ═══
-      setPhase('rendering')
-      addLog('🎬 Renderizando vídeo no navegador...')
-      addLog('📺 Formato: 1080x1920 (vertical/Shorts)')
-      addLog('🔄 Transições: slideleft entre páginas')
+      // ═══ FASE 1.5: Narrated Mode — Gerar roteiro com Gemini ═══
+      let segments: NarratedSegment[] | undefined
+      let generatedTitle = mangaTitle || scrapeData.title || 'Mangá Video'
+      let generatedCaption = ''
+      let generatedHashtags: string[] = []
 
-      const pages = scrapeData.images.map((img: string, i: number) => ({
-        imageUrl: img,
-        dialogue: scrapeData.dialogues?.[i] || '',
-      }))
+      if (narrationMode === 'narrated') {
+        setPhase('narrating')
+        const narrateResult = await handleNarrate(scrapeData.images, generatedTitle)
 
-      const blob = await renderMangaSlideshow({
-        pages,
-        durationPerPage,
-        transitionDuration: 0.6,
-        canvasWidth: 1080,
-        canvasHeight: 1920,
-        bgMusicVolume: enableAudio ? bgMusicVolume / 100 : 0,
-      }, (progress: RenderProgress) => {
-        setRenderProgress(progress)
-        if (progress.phase === 'rendering') {
-          addLog(`🖌️ ${progress.message}`)
+        if (narrateResult && narrateResult.segments.length > 0) {
+          segments = narrateResult.segments
+          generatedTitle = narrateResult.title
+          generatedCaption = narrateResult.caption
+          generatedHashtags = narrateResult.hashtags
+
+          // Atualizar páginas com apenas as imagens selecionadas pelo Gemini
+          const selectedPages = narrateResult.selectedImageIndices.map((idx: number) => ({
+            imageUrl: scrapeData.images[idx] || scrapeData.images[0],
+            dialogue: '',
+          }))
+
+          addLog(`🎯 Gemini selecionou ${segments.length} imagens-chave de ${scrapeData.totalPages} total`)
+          addLog(`⏱️ Duração estimada: ~${Math.round(narrateResult.totalDuration)}s`)
+
+          // Recalcular partes com imagens selecionadas
+          const parts = splitChapterIntoParts(selectedPages, durationPerPage)
+          setChapterParts(parts)
+
+          // ═══ FASE 2: Renderizar vídeo narrado ═══
+          setPhase('rendering')
+          addLog('🎬 Renderizando vídeo narrado...')
+          addLog(`📺 Formato: 1080x1920 (vertical/Shorts)`)
+          addLog(`🔄 Transições: slideleft entre páginas`)
+          addLog(`🗣️ Narração: ${enableTTS ? 'Ativada (TTS)' : 'Desativada'}`)
+          addLog(`🎵 Música: ${enableAudio ? `Volume ${bgMusicVolume}%` : 'Desativada'}`)
+
+          const blob = await renderMangaSlideshow({
+            pages: selectedPages,
+            durationPerPage,
+            transitionDuration: 0.6,
+            canvasWidth: 1080,
+            canvasHeight: 1920,
+            bgMusicVolume: enableAudio ? bgMusicVolume / 100 : 0,
+            segments,
+            enableTTS,
+            ttsRate: 1.0,
+          }, (progress: RenderProgress) => {
+            setRenderProgress(progress)
+            if (progress.phase === 'rendering') {
+              addLog(`🖌️ ${progress.message}`)
+            }
+          })
+
+          setVideoBlob(blob)
+          const blobUrl = URL.createObjectURL(blob)
+          setVideoBlobUrl(blobUrl)
+
+          addLog(`✅ Vídeo pronto! ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
+          addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
+
+          // ═══ FASE 3: Salvar na fila ═══
+          setPhase('saving')
+          addLog('💾 Salvando na fila de conteúdo...')
+
+          const newItem: QueueItem = {
+            id: `manga_${Date.now()}`,
+            title: generatedTitle,
+            description: generatedCaption || `Vídeo narrado — ${segments.length} imagens-chave`,
+            platform: 'youtube',
+            motorType: 'manga_video',
+            status: 'draft',
+            mediaUrl: blobUrl,
+            thumbnailUrl: scrapeData.images[segments[0]?.imageIndex || 0] || scrapeData.images[0],
+            images: scrapeData.images,
+            totalPages: scrapeData.totalPages,
+            durationPerPage,
+            createdAt: Date.now(),
+          }
+
+          // Adicionar hashtags ao item
+          const queueItem = { ...newItem, aiHashtags: generatedHashtags } as QueueItem & { aiHashtags?: string[] }
+          const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
+          queue.unshift(queueItem)
+          localStorage.setItem('altomatico_queue', JSON.stringify(queue))
+
+          addLog(`✅ Salvo! ID: ${newItem.id}`)
+          setResult(queueItem)
+          setPhase('done')
+          addLog('🎉 Pipeline completa! Vídeo narrado pronto para revisão.')
+
+        } else {
+          // Fallback: Gemini falhou, usar modo simples
+          addLog('⚠️ Fallback para modo simples (sem narração)')
+          await renderSimpleMode(scrapeData, generatedTitle)
         }
-      })
 
-      setVideoBlob(blob)
-      const blobUrl = URL.createObjectURL(blob)
-      setVideoBlobUrl(blobUrl)
-
-      addLog(`✅ Vídeo pronto! ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
-      addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
-
-      // ═══ FASE 3: Salvar na fila ═══
-      setPhase('saving')
-      addLog('💾 Salvando na fila de conteúdo...')
-
-      const newItem: QueueItem = {
-        id: `manga_${Date.now()}`,
-        title: mangaTitle || scrapeData.title || 'Mangá Video',
-        description: `Capítulo de ${scrapeData.totalPages} páginas`,
-        platform: 'youtube',
-        motorType: 'manga_video',
-        status: 'rascunho',
-        mediaUrl: blobUrl,
-        thumbnailUrl: scrapeData.images[0] || '',
-        images: scrapeData.images,
-        totalPages: scrapeData.totalPages,
-        durationPerPage,
-        createdAt: Date.now(),
+      } else {
+        // ═══ Modo simples (sem narração) ═══
+        await renderSimpleMode(scrapeData, generatedTitle)
       }
 
-      const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
-      queue.unshift(newItem)
-      localStorage.setItem('altomatico_queue', JSON.stringify(queue))
-
-      addLog(`✅ Salvo! ID: ${newItem.id}`)
-      setResult(newItem)
-      setPhase('done')
-      addLog('🎉 Pipeline completa! Vídeo pronto para revisão.')
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Erro desconhecido'
       setError(errMsg)
@@ -198,6 +309,83 @@ export default function MangaVideoPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // ─── Renderizar no modo simples (sem narração) ──────────
+  const renderSimpleMode = async (scrapeData: { images: string[]; title: string; source: string; totalPages: number }, title: string) => {
+    const allPages = scrapeData.images.map((img: string, i: number) => ({
+      imageUrl: img,
+      dialogue: '',
+    }))
+
+    const parts = splitChapterIntoParts(allPages, durationPerPage)
+    setChapterParts(parts)
+
+    if (parts.length > 1) {
+      addLog(`📐 Capítulo dividido em ${parts.length} vídeos (máx ${YOUTUBE_SHORTS_MAX_SECONDS}s cada)`)
+      parts.forEach((p) => {
+        addLog(`  → Parte ${p.partNumber}/${p.totalParts}: páginas ${p.startPage}-${p.endPage} (~${Math.round(p.estimatedDuration)}s)`)
+      })
+    }
+
+    setPhase('rendering')
+    addLog('🎬 Renderizando vídeo simples...')
+    addLog('📺 Formato: 1080x1920 (vertical/Shorts)')
+    addLog('🔄 Transições: slideleft entre páginas')
+    addLog(`⏱️ Máximo: ${YOUTUBE_SHORTS_MAX_SECONDS}s por vídeo (YouTube Shorts)`)
+
+    const currentPart = parts[selectedPart] || parts[0]
+    addLog(`📖 Renderizando Parte ${currentPart.partNumber}/${currentPart.totalParts} (${currentPart.pages.length} páginas)`)
+
+    const blob = await renderMangaSlideshow({
+      pages: currentPart.pages,
+      durationPerPage,
+      transitionDuration: 0.6,
+      canvasWidth: 1080,
+      canvasHeight: 1920,
+      bgMusicVolume: enableAudio ? bgMusicVolume / 100 : 0,
+    }, (progress: RenderProgress) => {
+      setRenderProgress(progress)
+      if (progress.phase === 'rendering') {
+        addLog(`🖌️ ${progress.message}`)
+      }
+    })
+
+    setVideoBlob(blob)
+    const blobUrl = URL.createObjectURL(blob)
+    setVideoBlobUrl(blobUrl)
+
+    addLog(`✅ Vídeo pronto! ${(blob.size / 1024 / 1024).toFixed(1)} MB`)
+    addLog(`📐 Resolução: 1080x1920 | FPS: 30`)
+
+    setPhase('saving')
+    addLog('💾 Salvando na fila de conteúdo...')
+
+    const newItem: QueueItem = {
+      id: `manga_${Date.now()}`,
+      title: title || scrapeData.title || 'Mangá Video',
+      description: parts.length > 1
+        ? `Parte ${currentPart.partNumber}/${currentPart.totalParts} — Páginas ${currentPart.startPage}-${currentPart.endPage} de ${scrapeData.totalPages}`
+        : `Capítulo de ${scrapeData.totalPages} páginas`,
+      platform: 'youtube',
+      motorType: 'manga_video',
+      status: 'draft',
+      mediaUrl: blobUrl,
+      thumbnailUrl: scrapeData.images[0] || '',
+      images: scrapeData.images,
+      totalPages: scrapeData.totalPages,
+      durationPerPage,
+      createdAt: Date.now(),
+    }
+
+    const queue = JSON.parse(localStorage.getItem('altomatico_queue') || '[]')
+    queue.unshift(newItem)
+    localStorage.setItem('altomatico_queue', JSON.stringify(queue))
+
+    addLog(`✅ Salvo! ID: ${newItem.id}`)
+    setResult(newItem)
+    setPhase('done')
+    addLog('🎉 Pipeline completa! Vídeo pronto para revisão.')
   }
 
   // ─── Reset ──────────────────────────────────────────────
@@ -212,6 +400,7 @@ export default function MangaVideoPage() {
     setRenderProgress(null)
     setVideoBlobUrl(null)
     setVideoBlob(null)
+    setNarrateData(null)
   }
 
   // ─── Download do vídeo ──────────────────────────────────
@@ -261,7 +450,6 @@ export default function MangaVideoPage() {
             />
             <p className='text-[10px] text-gray-400 mb-2'>Cole a URL de qualquer site de leitura de mangá/manhwa</p>
 
-            {/* URLs de exemplo para teste */}
             <div className='bg-amber-50 border border-amber-200 rounded-lg p-2'>
               <p className='text-[10px] font-bold text-amber-700 mb-1'>📋 URLs de teste (clique para usar):</p>
               <div className='space-y-1'>
@@ -293,6 +481,41 @@ export default function MangaVideoPage() {
             <h3 className='font-bold text-gray-900 mb-3 flex items-center gap-2'>
               <Settings className='w-4 h-4 text-amber-500' /> Configurações
             </h3>
+
+            {/* Modo de Geração */}
+            <div className='mb-4'>
+              <label className='text-xs font-medium text-gray-600 block mb-2'>🎬 Modo de Geração</label>
+              <div className='grid grid-cols-2 gap-2'>
+                <button
+                  onClick={() => setNarrationMode('narrated')}
+                  className={`p-3 rounded-xl border-2 transition text-left ${
+                    narrationMode === 'narrated'
+                      ? 'border-amber-500 bg-amber-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className='flex items-center gap-1.5 mb-1'>
+                    <Sparkles className='w-3.5 h-3.5 text-amber-500' />
+                    <span className='text-xs font-bold text-gray-900'>Narrado (IA)</span>
+                  </div>
+                  <p className='text-[10px] text-gray-500'>Gemini seleciona imagens e cria roteiro</p>
+                </button>
+                <button
+                  onClick={() => setNarrationMode('simple')}
+                  className={`p-3 rounded-xl border-2 transition text-left ${
+                    narrationMode === 'simple'
+                      ? 'border-gray-500 bg-gray-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className='flex items-center gap-1.5 mb-1'>
+                    <Image className='w-3.5 h-3.5 text-gray-500' />
+                    <span className='text-xs font-bold text-gray-900'>Simples</span>
+                  </div>
+                  <p className='text-[10px] text-gray-500'>Slideshow com todas as páginas</p>
+                </button>
+              </div>
+            </div>
 
             {/* Tempo por página */}
             <div className='mb-4'>
@@ -391,7 +614,60 @@ export default function MangaVideoPage() {
                 </div>
               )}
             </div>
+
+            {/* TTS (narração por voz) */}
+            {narrationMode === 'narrated' && (
+              <div className='p-3 mt-3 bg-blue-50 rounded-lg border border-blue-200'>
+                <div className='flex items-center justify-between mb-1'>
+                  <label className='text-xs font-bold text-blue-700 flex items-center gap-1'>
+                    <Mic className='w-3 h-3' /> Narração por Voz (TTS)
+                  </label>
+                  <label className='relative inline-flex items-center cursor-pointer'>
+                    <input
+                      type='checkbox'
+                      checked={enableTTS}
+                      onChange={e => setEnableTTS(e.target.checked)}
+                      className='sr-only peer'
+                    />
+                    <div className='w-9 h-5 bg-gray-300 rounded-full peer peer-checked:bg-blue-500 transition'></div>
+                    <div className='absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full peer-checked:translate-x-4 transition'></div>
+                  </label>
+                </div>
+                <p className='text-[10px] text-blue-500'>Voz automática narrando o roteiro gerado pelo Gemini (PT-BR)</p>
+              </div>
+            )}
           </div>
+
+          {/* Seletor de Partes (quando capítulo é dividido) */}
+          {chapterParts.length > 1 && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
+              <h3 className='font-bold text-gray-900 mb-2 flex items-center gap-2'>
+                📐 Partes do Vídeo (máx {YOUTUBE_SHORTS_MAX_SECONDS}s cada)
+              </h3>
+              <p className='text-[10px] text-gray-500 mb-3'>Capítulo dividido automaticamente para YouTube Shorts</p>
+              <div className='space-y-2'>
+                {chapterParts.map((part) => (
+                  <button
+                    key={part.partNumber}
+                    onClick={() => setSelectedPart(part.partNumber - 1)}
+                    className={`w-full p-3 rounded-xl border-2 transition text-left ${
+                      selectedPart === part.partNumber - 1
+                        ? 'border-amber-500 bg-amber-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className='flex items-center justify-between'>
+                      <div>
+                        <span className='text-sm font-bold text-gray-900'>Parte {part.partNumber}/{part.totalParts}</span>
+                        <span className='text-xs text-gray-500 ml-2'>Páginas {part.startPage}-{part.endPage}</span>
+                      </div>
+                      <span className='text-xs font-bold text-amber-600'>~{Math.round(part.estimatedDuration)}s</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Botão Gerar */}
           <Button
@@ -414,8 +690,70 @@ export default function MangaVideoPage() {
           )}
         </div>
 
-        {/* ═══ COLUNA 2: Preview das Imagens ═══ */}
+        {/* ═══ COLUNA 2: Preview das Imagens + Roteiro ═══ */}
         <div className='space-y-4'>
+          {/* Roteiro Narrado (quando disponível) */}
+          {narrateData && (
+            <div className='bg-white rounded-2xl border border-amber-200 shadow-sm p-5'>
+              <h3 className='font-bold text-gray-900 mb-3 flex items-center gap-2'>
+                <FileText className='w-4 h-4 text-amber-500' /> Roteiro Gerado
+                <span className='ml-auto bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full font-bold'>Gemini</span>
+              </h3>
+
+              {/* Título */}
+              <div className='mb-3 p-2 bg-amber-50 rounded-lg'>
+                <p className='text-[10px] text-gray-500 mb-0.5'>Título:</p>
+                <p className='text-sm font-bold text-gray-900'>{narrateData.title}</p>
+              </div>
+
+              {/* Duração e segmentos */}
+              <div className='flex items-center gap-3 mb-3'>
+                <div className='bg-green-100 text-green-700 text-[10px] px-2 py-1 rounded-full font-bold'>
+                  ⏱️ ~{Math.round(narrateData.totalDuration)}s
+                </div>
+                <div className='bg-blue-100 text-blue-700 text-[10px] px-2 py-1 rounded-full font-bold'>
+                  🖼️ {narrateData.segments.length} imagens
+                </div>
+              </div>
+
+              {/* Segmentos */}
+              <div className='space-y-2 max-h-[300px] overflow-y-auto'>
+                {narrateData.segments.map((seg, i) => (
+                  <div key={i} className={`p-2 rounded-lg border text-xs ${
+                    seg.emotion === 'hook' ? 'border-red-200 bg-red-50' :
+                    seg.emotion === 'climax' ? 'border-purple-200 bg-purple-50' :
+                    seg.emotion === 'cta' ? 'border-amber-200 bg-amber-50' :
+                    'border-gray-200 bg-gray-50'
+                  }`}>
+                    <div className='flex items-center justify-between mb-1'>
+                      <span className='font-bold text-gray-900'>#{i + 1} — {seg.duration}s</span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                        seg.emotion === 'hook' ? 'bg-red-200 text-red-700' :
+                        seg.emotion === 'climax' ? 'bg-purple-200 text-purple-700' :
+                        seg.emotion === 'cta' ? 'bg-amber-200 text-amber-700' :
+                        'bg-gray-200 text-gray-700'
+                      }`}>{seg.emotion}</span>
+                    </div>
+                    <p className='text-gray-700 mb-1'>{seg.narration}</p>
+                    {seg.subtitle && (
+                      <p className='text-[10px] text-blue-600 font-medium'>📺 {seg.subtitle}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Hashtags */}
+              {narrateData.hashtags.length > 0 && (
+                <div className='flex flex-wrap gap-1 mt-3'>
+                  {narrateData.hashtags.map((tag, i) => (
+                    <span key={i} className='bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full'>{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Páginas Encontradas */}
           <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
             <h3 className='font-bold text-gray-900 mb-3 flex items-center gap-2'>
               <Image className='w-4 h-4 text-amber-500' /> Páginas Encontradas
@@ -428,23 +766,31 @@ export default function MangaVideoPage() {
 
             {scrapedImages.length > 0 ? (
               <div className='grid grid-cols-3 gap-2 max-h-[500px] overflow-y-auto'>
-                {scrapedImages.map((img, i) => (
-                  <div key={i} className='relative group'>
-                    <div className='aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden'>
-                      <img
-                        src={img}
-                        alt={`Página ${i + 1}`}
-                        className='w-full h-full object-cover'
-                        onError={e => {
-                          (e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
+                {scrapedImages.map((img, i) => {
+                  const isSelected = narrateData?.selectedImageIndices?.includes(i)
+                  return (
+                    <div key={i} className={`relative group ${isSelected ? 'ring-2 ring-amber-400 rounded-lg' : ''}`}>
+                      <div className='aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden'>
+                        <img
+                          src={img}
+                          alt={`Página ${i + 1}`}
+                          className='w-full h-full object-cover'
+                          onError={e => {
+                            (e.target as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      </div>
+                      <div className='absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded'>
+                        {i + 1}
+                      </div>
+                      {isSelected && (
+                        <div className='absolute top-1 right-1 bg-amber-500 text-white text-[9px] px-1 py-0.5 rounded font-bold'>
+                          ★
+                        </div>
+                      )}
                     </div>
-                    <div className='absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded'>
-                      {i + 1}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className='text-center py-12 text-gray-400'>
@@ -470,6 +816,7 @@ export default function MangaVideoPage() {
                   <p key={i} className={`text-xs font-mono mb-1 ${
                     log.includes('❌') ? 'text-red-400' :
                     log.includes('✅') || log.includes('🎉') ? 'text-green-400' :
+                    log.includes('⚠️') ? 'text-yellow-400' :
                     'text-amber-300'
                   }`}>{log}</p>
                 ))}
@@ -477,7 +824,7 @@ export default function MangaVideoPage() {
             </div>
           )}
 
-          {/* Player do Vídeo (durante e após renderização) */}
+          {/* Player do Vídeo */}
           {(videoBlobUrl || (renderProgress && renderProgress.phase === 'rendering')) && (
             <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
               <h3 className='font-bold text-gray-900 mb-3 flex items-center gap-2'>
@@ -488,7 +835,6 @@ export default function MangaVideoPage() {
                 )}
               </h3>
 
-              {/* Barra de progresso */}
               {renderProgress && (
                 <div className='mb-3'>
                   <div className='flex items-center justify-between mb-1'>
@@ -504,7 +850,6 @@ export default function MangaVideoPage() {
                 </div>
               )}
 
-              {/* Player de vídeo */}
               {videoBlobUrl && (
                 <div className='rounded-xl overflow-hidden bg-black mb-3'>
                   <video
@@ -517,7 +862,6 @@ export default function MangaVideoPage() {
                 </div>
               )}
 
-              {/* Botões */}
               {videoBlobUrl && (
                 <div className='flex gap-2'>
                   <Button onClick={handleDownload} variant='outline' className='flex-1 text-xs'>
@@ -553,19 +897,17 @@ export default function MangaVideoPage() {
                   </div>
                   <div>
                     <span className='text-gray-500'>Motor:</span>
-                    <span className='font-bold text-gray-900 ml-1'>📖 Manga</span>
+                    <span className='font-bold text-gray-900 ml-1'>📖 Manga{narrateData ? ' + 🤖 IA' : ''}</span>
                   </div>
                 </div>
               </div>
 
               {/* Hashtags */}
-              <div className='flex flex-wrap gap-1 mb-3'>
-                {(result as QueueItem & { aiHashtags?: string[] }).aiHashtags?.map((tag: string, i: number) => (
-                  <span key={i} className='bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full'>{tag}</span>
-                ))}
-              </div>
+              {(result as QueueItem & { aiHashtags?: string[] }).aiHashtags?.map((tag: string, i: number) => (
+                <span key={i} className='inline-block bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full mr-1 mb-1'>{tag}</span>
+              ))}
 
-              <div className='flex gap-2'>
+              <div className='flex gap-2 mt-3'>
                 <Button
                   onClick={handleReset}
                   variant='outline'
@@ -599,19 +941,25 @@ export default function MangaVideoPage() {
                   <div className='w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center shrink-0 mt-0.5'>
                     <span className='text-xs font-bold text-amber-600'>2</span>
                   </div>
-                  <p className='text-xs text-gray-600'><strong>Configura</strong> tempo por página, áudio e canal</p>
+                  <p className='text-xs text-gray-600'><strong>Escolhe o modo:</strong> Narrado (Gemini + TTS) ou Simples</p>
                 </div>
                 <div className='flex items-start gap-3'>
                   <div className='w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center shrink-0 mt-0.5'>
                     <span className='text-xs font-bold text-amber-600'>3</span>
                   </div>
-                  <p className='text-xs text-gray-600'><strong>Gera o vídeo</strong> com transições e música de fundo</p>
+                  <p className='text-xs text-gray-600'><strong>Gemini seleciona</strong> as melhores imagens e cria o roteiro</p>
                 </div>
                 <div className='flex items-start gap-3'>
                   <div className='w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center shrink-0 mt-0.5'>
                     <span className='text-xs font-bold text-amber-600'>4</span>
                   </div>
-                  <p className='text-xs text-gray-600'><strong>Revisa</strong> na fila e publica no YouTube</p>
+                  <p className='text-xs text-gray-600'><strong>Gera o vídeo</strong> com narração, transições e música</p>
+                </div>
+                <div className='flex items-start gap-3'>
+                  <div className='w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center shrink-0 mt-0.5'>
+                    <span className='text-xs font-bold text-amber-600'>5</span>
+                  </div>
+                  <p className='text-xs text-gray-600'><strong>Revisa</strong> na fila e publica no YouTube (@anime_HQs)</p>
                 </div>
               </div>
             </div>

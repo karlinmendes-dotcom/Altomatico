@@ -239,7 +239,7 @@ IMPORTANTE: Gere narração para TODAS as ${scrapeData.images.length} páginas. 
       scrapeResult: {
         title: scrapeData.title,
         source: scrapeData.source,
-        totalPages: scrapeData.totalDuration,
+        totalPages: scrapeData.totalPages,
         images: scrapeData.images,
       },
       renderConfig: {

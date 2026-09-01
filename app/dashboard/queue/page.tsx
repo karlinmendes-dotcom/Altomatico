@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { FileText, Edit3, Trash2, Send, Eye, Copy, CheckCircle, AlertCircle, Clock, Instagram, Youtube, Music, RefreshCw, ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Film, Image as ImageIcon, Loader2, X } from 'lucide-react'
+import { FileText, Edit3, Trash2, Send, Eye, Copy, CheckCircle, AlertCircle, Clock, Instagram, Youtube, Music, RefreshCw, ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Film, Image as ImageIcon, Loader2, X, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -125,9 +125,10 @@ function MediaPreview({ item }: { item: QueueItem }) {
   }
 
   // Determinar tipo de mídia
-  const isVideo = mediaUrl.match(/\.(mp4|webm|ogg|mov)/i) || mediaUrl.includes('video') || mediaUrl.includes('pixabay.com/api/videos') || item.contentType === 'short' || item.contentType === 'reel' || item.contentType === 'long_video'
+  const isBlobUrl = mediaUrl.startsWith('blob:')
+  const isVideo = mediaUrl.match(/\.(mp4|webm|ogg|mov)/i) || mediaUrl.includes('video') || mediaUrl.includes('pixabay.com/api/videos') || item.contentType === 'short' || item.contentType === 'reel' || item.contentType === 'long_video' || (item as QueueItem & { motorType?: string }).motorType === 'manga_video' || isBlobUrl
   const isAudio = mediaUrl.match(/\.(mp3|wav|ogg|m4a)/i) || mediaUrl.includes('audio')
-  const isImage = mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)/i) || mediaUrl.includes('image') || item.contentType === 'post' || item.contentType === 'carousel'
+  const isImage = !isVideo && !isAudio && (mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)/i) || mediaUrl.includes('image') || item.contentType === 'post' || item.contentType === 'carousel')
 
   // Player de vídeo — Formato vertical 9:16
   if (isVideo) {
@@ -143,9 +144,22 @@ function MediaPreview({ item }: { item: QueueItem }) {
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onError={(e) => {
-            // Fallback: mostrar erro amigável
-            const target = e.target as HTMLVideoElement
-            target.style.display = 'none'
+            // Blob URLs expiram ao recarregar a página
+            if (mediaUrl.startsWith('blob:')) {
+              const target = e.target as HTMLVideoElement
+              target.style.display = 'none'
+              // Mostrar mensagem de blob expirado
+              const parent = target.parentElement
+              if (parent) {
+                const msg = document.createElement('div')
+                msg.className = 'absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 text-white p-4'
+                msg.innerHTML = '<p class="text-sm font-medium mb-1">⚠️ Vídeo expirou</p><p class="text-xs text-gray-400 text-center">O vídeo foi gerado no navegador mas a pré-visualização expirou. Gere novamente na página Mangá → Vídeo para baixar.</p>'
+                parent.appendChild(msg)
+              }
+            } else {
+              const target = e.target as HTMLVideoElement
+              target.style.display = 'none'
+            }
           }}
         />
         {/* Controles overlay */}
@@ -174,6 +188,22 @@ function MediaPreview({ item }: { item: QueueItem }) {
               </button>
             </div>
             <span className='text-white text-xs bg-black/50 px-2 py-0.5 rounded'>9:16</span>
+            {isBlobUrl && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const a = document.createElement('a')
+                  a.href = mediaUrl
+                  a.download = `${item.title || 'manga'}.webm`
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                }}
+                className='w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition'
+              >
+                <Download className='w-4 h-4' />
+              </button>
+            )}
           </div>
         </div>
         {/* Badge de formato */}
@@ -347,18 +377,73 @@ export default function QueuePage() {
       const result = await res.json()
 
       if (result.success) {
-        // Atualizar status local
-        const updated = queue.map(q =>
-          q.id === item.id ? { ...q, status: 'scheduled', updatedAt: Date.now() } : q
-        )
-        saveQueue(updated)
-        setQueue(updated)
+        // Se o backend indica upload via cliente (YouTube com OAuth)
+        if (result.requiresClientUpload && result.uploadEndpoint) {
+          addToast('info', '📤 Preparando upload para YouTube...')
 
-        addToast(
-          'success',
-          result.message || `Rascunho enviado para ${item.platform} como NÃO LISTADO/PRIVADO`,
-          result.note
-        )
+          // Buscar vídeo do blob URL e enviar via upload API
+          const mediaUrl = item.mediaUrl || item.videoUrl
+          if (mediaUrl && mediaUrl.startsWith('blob:')) {
+            try {
+              const videoRes = await fetch(mediaUrl)
+              const videoBlob = await videoRes.blob()
+              const videoFile = new File([videoBlob], `${item.title || 'manga'}.webm`, { type: videoBlob.type || 'video/webm' })
+
+              // Buscar token OAuth do YouTube
+              const connections = JSON.parse(localStorage.getItem('altomatico_connections') || '{}')
+              const ytConn = connections.youtube as Record<string, string> | undefined
+
+              if (!ytConn?.accessToken) {
+                addToast('error', '❌ Token YouTube não encontrado', 'Conecte sua conta YouTube via OAuth em Conexões.')
+                setSending(null)
+                return
+              }
+
+              const uploadForm = new FormData()
+              uploadForm.append('video', videoFile)
+              uploadForm.append('title', result.metadata?.title || item.title)
+              uploadForm.append('description', result.metadata?.description || item.description || '')
+              uploadForm.append('tags', (result.metadata?.tags || item.aiHashtags || []).join(','))
+              uploadForm.append('privacyStatus', result.metadata?.privacyStatus || 'private')
+              uploadForm.append('accessToken', ytConn.accessToken)
+              uploadForm.append('refreshToken', ytConn.refreshToken || '')
+
+              const uploadRes = await fetch(result.uploadEndpoint, {
+                method: 'POST',
+                body: uploadForm,
+              })
+
+              const uploadData = await uploadRes.json()
+
+              if (uploadData.success) {
+                const updated = queue.map(q =>
+                  q.id === item.id ? { ...q, status: 'scheduled', updatedAt: Date.now(), youtubeVideoId: uploadData.videoId } : q
+                )
+                saveQueue(updated)
+                setQueue(updated)
+                addToast('success', uploadData.message || '✅ Vídeo enviado para o YouTube!', `Link: ${uploadData.videoUrl}`)
+              } else {
+                addToast('error', uploadData.error || 'Falha no upload para YouTube', uploadData.hint)
+              }
+            } catch (uploadErr) {
+              addToast('error', `Erro ao enviar vídeo: ${uploadErr instanceof Error ? uploadErr.message : 'desconhecido'}`)
+            }
+          } else {
+            addToast('warning', '⚠️ Vídeo não disponível para upload', 'O vídeo precisa ser gerado novamente. Blob URLs expiram ao recarregar.')
+          }
+        } else {
+          // Atualizar status local (para plataformas sem upload real)
+          const updated = queue.map(q =>
+            q.id === item.id ? { ...q, status: 'scheduled', updatedAt: Date.now() } : q
+          )
+          saveQueue(updated)
+          setQueue(updated)
+          addToast(
+            'success',
+            result.message || `Rascunho enviado para ${item.platform}`,
+            result.note
+          )
+        }
       } else {
         addToast(
           'error',

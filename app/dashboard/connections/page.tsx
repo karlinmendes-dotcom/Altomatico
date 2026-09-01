@@ -152,6 +152,36 @@ export default function ConnectionsPage() {
       setMessage(`❌ TikTok: ${ttError}`)
       window.history.replaceState({}, '', '/dashboard/connections')
     }
+
+    // YouTube OAuth callback
+    const ytConnected = searchParams.get('youtube_connected')
+    const ytToken = searchParams.get('token')
+    const ytRefresh = searchParams.get('refresh_token')
+    const ytChannelId = searchParams.get('channel_id')
+    const ytChannelName = searchParams.get('channel_name')
+    const ytThumbnail = searchParams.get('channel_thumbnail')
+    const ytExpires = searchParams.get('expires_at')
+    const ytError = searchParams.get('youtube_error')
+
+    if (ytConnected === 'true' && ytToken && ytChannelId) {
+      saveConnection('youtube', {
+        channelId: ytChannelId,
+        channelName: ytChannelName || 'YouTube Channel',
+        channelThumbnail: ytThumbnail || '',
+        accessToken: ytToken,
+        refreshToken: ytRefresh || '',
+        expiresAt: parseInt(ytExpires || '0'),
+        oauthConnected: true,
+      })
+      setConnections(getConnections())
+      setMessage(`✅ YouTube conectado via OAuth! Canal: ${ytChannelName}`)
+      window.history.replaceState({}, '', '/dashboard/connections')
+    }
+
+    if (ytError) {
+      setMessage(`❌ YouTube: ${ytError}`)
+      window.history.replaceState({}, '', '/dashboard/connections')
+    }
   }, [searchParams])
 
   // Load connections and channel configs on mount
