@@ -82,6 +82,8 @@ export default function MangaVideoPage() {
   const [narrateLoading, setNarrateLoading] = useState(false)
   const [ttsAudioData, setTtsAudioData] = useState<{ base64: string; duration: number; text: string; index: number }[] | null>(null)
   const [bgMusicUrl, setBgMusicUrl] = useState<string | null>(null)
+  const [uploadingToYt, setUploadingToYt] = useState(false)
+  const [ytUploadResult, setYtUploadResult] = useState<string | null>(null)
 
   // ─── Carregar canais YouTube do localStorage ────────────
   useEffect(() => {
@@ -474,6 +476,62 @@ export default function MangaVideoPage() {
   const handleDownload = () => {
     if (videoBlob) {
       downloadVideoBlob(videoBlob, `${mangaTitle || 'manga'}.webm`)
+    }
+  }
+
+  // ─── Upload direto para YouTube ─────────────────────────
+  const handleUploadToYouTube = async () => {
+    if (!videoBlob || !result) return
+
+    // Buscar token OAuth do YouTube no localStorage
+    const connections = JSON.parse(localStorage.getItem('altomatico_connections') || '{}')
+    const ytConn = connections.youtube as Record<string, string> | undefined
+
+    if (!ytConn?.accessToken) {
+      setError('❌ Token YouTube não encontrado. Conecte sua conta YouTube em Conexões.')
+      return
+    }
+
+    setUploadingToYt(true)
+    setYtUploadResult(null)
+    addLog('📤 Enviando vídeo para o YouTube...')
+
+    try {
+      const videoFile = new File([videoBlob], `${result.title || 'manga'}.webm`, {
+        type: videoBlob.type || 'video/webm',
+      })
+
+      const uploadForm = new FormData()
+      uploadForm.append('video', videoFile)
+      uploadForm.append('title', result.title || 'Mangá Video')
+      uploadForm.append('description', result.description || '')
+      uploadForm.append('tags', (result as QueueItem & { aiHashtags?: string[] }).aiHashtags?.join(',') || 'manga,manhwa,anime,shorts')
+      uploadForm.append('privacyStatus', 'private')
+      uploadForm.append('accessToken', ytConn.accessToken)
+      uploadForm.append('refreshToken', ytConn.refreshToken || '')
+
+      const uploadRes = await fetch('/api/youtube/upload', {
+        method: 'POST',
+        body: uploadForm,
+      })
+
+      const uploadData = await uploadRes.json()
+
+      if (uploadData.success) {
+        setYtUploadResult(uploadData.videoUrl)
+        addLog(`✅ Vídeo enviado! Link: ${uploadData.videoUrl}`)
+        addLog(`📺 Status: ${uploadData.status || 'privado'} — Acesse seu YouTube para revisar`)
+      } else {
+        addLog(`❌ Falha no upload: ${uploadData.error}`)
+        if (uploadData.hint) addLog(`💡 ${uploadData.hint}`)
+        setError(uploadData.error || 'Falha ao enviar para YouTube')
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+      addLog(`❌ Erro no upload: ${msg}`)
+      setError(msg)
+    } finally {
+      setUploadingToYt(false)
     }
   }
 
@@ -934,6 +992,22 @@ export default function MangaVideoPage() {
                   <Button onClick={handleDownload} variant='outline' className='flex-1 text-xs'>
                     <Download className='w-3 h-3 mr-1' /> Baixar .webm
                   </Button>
+                  <Button
+                    onClick={handleUploadToYouTube}
+                    disabled={uploadingToYt}
+                    className='flex-1 bg-red-600 hover:bg-red-700 text-white text-xs'
+                  >
+                    {uploadingToYt ? (
+                      <><Loader2 className='w-3 h-3 mr-1 animate-spin' /> Enviando...</>
+                    ) : (
+                      <><Youtube className='w-3 h-3 mr-1' /> Enviar p/ YouTube</>
+                    )}
+                  </Button>
+                </div>
+              )}
+              {ytUploadResult && (
+                <div className='mt-2 p-2 bg-green-50 rounded-lg border border-green-200'>
+                  <p className='text-[10px] text-green-700'>✅ Enviado! <a href={ytUploadResult} target='_blank' rel='noopener' className='underline font-bold'>{ytUploadResult}</a></p>
                 </div>
               )}
             </div>
