@@ -22,9 +22,11 @@ interface VideoScript {
   totalDuration: number
 }
 
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+
 async function callGemini(apiKey: string, prompt: string, maxTokens: number): Promise<string> {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -34,7 +36,7 @@ async function callGemini(apiKey: string, prompt: string, maxTokens: number): Pr
       }),
     }
   )
-  if (!response.ok) throw new Error(`Gemini error: ${await response.text()}`)
+  if (!response.ok) throw new Error(`Gemini error (${GEMINI_MODEL}): ${await response.text()}`)
   const data = await response.json()
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text
   if (!text) throw new Error('Gemini retornou vazio')
