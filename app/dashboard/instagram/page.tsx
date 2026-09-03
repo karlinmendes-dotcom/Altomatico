@@ -1,6 +1,6 @@
 'use client'
-import React, { useState } from 'react'
-import { Instagram, Loader2, Sparkles, Send, Copy, CheckCircle, AlertCircle, Search, Target, ChevronRight, Users, Zap, FileText } from 'lucide-react'
+import React, { useState, useRef } from 'react'
+import { Instagram, Loader2, Sparkles, Send, Copy, CheckCircle, AlertCircle, Search, Target, ChevronRight, Users, Zap, FileText, Image, Download, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,7 +13,7 @@ const niches = [
   'Beleza', 'Saúde', 'Pets', 'Fotografia', 'Música'
 ]
 
-type AgentStep = 'idle' | 'agent1' | 'agent2' | 'agent3' | 'done'
+type AgentStep = 'idle' | 'agent1' | 'agent2' | 'agent3' | 'image' | 'done'
 
 interface CalendarItem {
   type: string
@@ -58,12 +58,87 @@ export default function InstagramPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [agentLogs, setAgentLogs] = useState<string[]>([])
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
+  const [imageStyle, setImageStyle] = useState<'modern' | 'professional' | 'tech' | 'elegant' | 'bold'>('modern')
+  const [imagePrompt, setImagePrompt] = useState('')
+  const [generatingImage, setGeneratingImage] = useState(false)
+  const [postStatus, setPostStatus] = useState<string | null>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
 
   const agent1 = useAction(api.instagramEngine.agent1_estrategista)
   const agent2 = useAction(api.instagramEngine.agent2_copywriter)
   const agent3 = useAction(api.instagramEngine.agent3_publicador)
 
   const addLog = (msg: string) => setAgentLogs(prev => [...prev, `[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`])
+
+  const handleGenerateImage = async () => {
+    if (!imagePrompt && !topic) return
+    setGeneratingImage(true)
+    setGeneratedImage(null)
+    addLog('🎨 Gerando imagem com Gemini...')
+
+    try {
+      const res = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: imagePrompt || topic,
+          brandName: brandName || undefined,
+          niche,
+          style: imageStyle,
+          aspectRatio: '1:1',
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success && data.image) {
+        setGeneratedImage(`data:${data.mimeType};base64,${data.image}`)
+        addLog(`✅ Imagem gerada! Modelo: ${data.model}`)
+      } else {
+        addLog(`❌ Erro: ${data.error}`)
+      }
+    } catch (err) {
+      addLog(`❌ Erro ao gerar imagem: ${err}`)
+    } finally {
+      setGeneratingImage(false)
+    }
+  }
+
+  const handlePostToInstagram = async () => {
+    if (!captionResult || !generatedImage) {
+      addLog('❌ Gere a imagem e a legenda primeiro')
+      return
+    }
+    setPostStatus('posting')
+    addLog('📤 Preparando post para Instagram...')
+
+    try {
+      // Enviar para a API de publicação
+      const res = await fetch('/api/queue/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform: 'instagram',
+          caption: captionResult.caption + '\n\n' + (captionResult.hashtags || []).join(' '),
+          imageUrl: generatedImage,
+          brandName,
+          niche,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setPostStatus('success')
+        addLog('✅ Post enviado para o Instagram!')
+      } else {
+        setPostStatus('error')
+        addLog(`❌ Erro ao postar: ${data.error}`)
+      }
+    } catch (err) {
+      setPostStatus('error')
+      addLog(`❌ Erro: ${err}`)
+    }
+  }
 
   const handleFullPipeline = async () => {
     if (!niche || !topic) return
@@ -258,6 +333,53 @@ export default function InstagramPage() {
             </div>
           </div>
 
+          {/* Geração de Imagem */}
+          <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+            <h3 className='font-bold text-gray-900 mb-4 flex items-center gap-2'>
+              <Image className='w-5 h-5 text-purple-500' /> Gerar Imagem com IA
+            </h3>
+            <div className='space-y-3'>
+              <div>
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Prompt da Imagem</label>
+                <Input
+                  placeholder='Ex: Smartphone showing CRM dashboard with neon blue accents'
+                  value={imagePrompt}
+                  onChange={e => setImagePrompt(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className='block text-xs font-medium text-gray-600 mb-1'>Estilo Visual</label>
+                <div className='grid grid-cols-3 gap-2'>
+                  {([
+                    { id: 'modern' as const, label: '🎨 Moderno', desc: 'Gradientes vibrantes' },
+                    { id: 'tech' as const, label: '⚡ Tech', desc: 'Futurista neon' },
+                    { id: 'professional' as const, label: '💼 Corporativo', desc: 'Clean & formal' },
+                    { id: 'elegant' as const, label: '✨ Elegante', desc: 'Minimalista luxo' },
+                    { id: 'bold' as const, label: '🔥 Bold', desc: 'Alto contraste' },
+                  ]).map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setImageStyle(s.id)}
+                      className={`p-2 rounded-lg border-2 text-left text-[10px] transition ${
+                        imageStyle === s.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className='font-bold text-gray-900'>{s.label}</div>
+                      <div className='text-gray-500'>{s.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Button
+                onClick={handleGenerateImage}
+                disabled={generatingImage || (!imagePrompt && !topic)}
+                className='w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'
+              >
+                {generatingImage ? (<><Loader2 className='w-4 h-4 animate-spin mr-2' /> Gerando...</>) : (<><Image className='w-4 h-4 mr-2' /> Gerar Imagem</>)}
+              </Button>
+            </div>
+          </div>
+
           {/* Agent Logs */}
           {agentLogs.length > 0 && (
             <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
@@ -365,6 +487,50 @@ export default function InstagramPage() {
             </div>
           )}
 
+          {/* Generated Image Preview */}
+          {generatedImage && (
+            <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6'>
+              <div className='flex items-center gap-2 mb-4'>
+                <div className='w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center'><Image className='w-4 h-4 text-purple-600' /></div>
+                <div>
+                  <h3 className='font-bold text-gray-900 text-sm'>Imagem Gerada</h3>
+                  <p className='text-xs text-gray-500'>Pronta para publicar</p>
+                </div>
+              </div>
+              <div className='rounded-xl overflow-hidden mb-4 border'>
+                <img src={generatedImage} alt='Imagem gerada' className='w-full aspect-square object-cover' />
+              </div>
+              <div className='flex gap-2'>
+                <a href={generatedImage} download={`post-${Date.now()}.png`} className='flex-1'>
+                  <Button variant='outline' className='w-full'><Download className='w-4 h-4 mr-2' /> Baixar</Button>
+                </a>
+                {captionResult && (
+                  <Button
+                    onClick={handlePostToInstagram}
+                    disabled={postStatus === 'posting'}
+                    className='flex-1 bg-gradient-to-r from-pink-500 to-orange-500 text-white'
+                  >
+                    {postStatus === 'posting' ? (<><Loader2 className='w-4 h-4 animate-spin mr-2' /> Postando...</>) :
+                     postStatus === 'success' ? (<><CheckCircle className='w-4 h-4 mr-2' /> Postado!</>) :
+                     (<><Send className='w-4 h-4 mr-2' /> Postar no Instagram</>)}
+                  </Button>
+                )}
+              </div>
+              {postStatus === 'success' && (
+                <div className='mt-3 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2'>
+                  <CheckCircle className='w-4 h-4 text-green-600' />
+                  <span className='text-sm text-green-700'>Post enviado com sucesso para o Instagram!</span>
+                </div>
+              )}
+              {postStatus === 'error' && (
+                <div className='mt-3 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2'>
+                  <AlertCircle className='w-4 h-4 text-red-600' />
+                  <span className='text-sm text-red-700'>Erro ao postar. Verifique as credenciais do Instagram.</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Empty State */}
           {currentStep === 'idle' && (
             <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center'>
@@ -373,7 +539,7 @@ export default function InstagramPage() {
               <p className='text-sm text-gray-500 mb-6 max-w-md mx-auto'>
                 Configure a identidade da marca e clique em Executar. Os 3 agentes Gemini vão trabalhar em sequência:
               </p>
-              <div className='grid grid-cols-3 gap-4 max-w-lg mx-auto'>
+              <div className='grid grid-cols-4 gap-4 max-w-xl mx-auto'>
                 <div className='p-3 bg-blue-50 rounded-xl'>
                   <p className='text-2xl mb-1'>🎯</p>
                   <p className='text-xs font-bold text-blue-700'>Estrategista</p>
@@ -383,6 +549,11 @@ export default function InstagramPage() {
                   <p className='text-2xl mb-1'>✍️</p>
                   <p className='text-xs font-bold text-purple-700'>Copywriter</p>
                   <p className='text-[10px] text-purple-500'>Legenda + hashtags</p>
+                </div>
+                <div className='p-3 bg-pink-50 rounded-xl'>
+                  <p className='text-2xl mb-1'>🎨</p>
+                  <p className='text-xs font-bold text-pink-700'>Imagem IA</p>
+                  <p className='text-[10px] text-pink-500'>Gemini gera a arte</p>
                 </div>
                 <div className='p-3 bg-green-50 rounded-xl'>
                   <p className='text-2xl mb-1'>📤</p>
